@@ -4,3 +4,8 @@ __pycache__/
 
 # Generated semantic index (derived from the vault, rebuilt on demand)
 src/state/index/
+
+# Phase 2 generated stores: doc chunks, sqlite db, escalation queue
+src/state/documents/
+src/state/db/
+runtime/escalations.md

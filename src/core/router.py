@@ -1,5 +1,6 @@
 from core.providers.registry import build_registry
 from core.complexity import score_complexity, classify, LOW, HIGH
+from core.escalation import record_escalation
 from core.log import get_logger
 
 
@@ -47,9 +48,10 @@ class ProviderRouter:
 
         if bar == HIGH and not sensitive:
             log.warning(
-                "high-complexity task (score=%.2f) — consider escalating to "
-                "Claude (Pro, manual) for best quality", score
+                "high-complexity task (score=%.2f) — flagged for manual "
+                "Claude (Pro) escalation", score
             )
+            record_escalation(prompt, score)
 
         for managed in self._ordered(bar, sensitive):
 

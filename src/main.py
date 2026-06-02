@@ -125,7 +125,13 @@ def show_menu():
 
     print("15. Plan & Execute Goal")
 
-    print("16. Exit")
+    print("16. Ingest Document")
+
+    print("17. Ask Documents (RAG)")
+
+    print("18. View Escalations")
+
+    print("19. Exit")
 
 
 def generate_context_package():
@@ -330,6 +336,61 @@ def plan_and_execute_interface():
     print(outcome["final"])
 
 
+def ingest_document_interface():
+
+    from core.document_store import DocumentStore
+
+    path = input("\nPath to document:\n\n").strip().strip('"')
+
+    try:
+        info = DocumentStore().ingest(path)
+        print(f"\nIngested {info['source']} -> {info['chunks']} chunks.")
+    except Exception as error:
+        print(f"\nCould not ingest: {error}")
+
+
+def ask_documents_interface():
+
+    from pathlib import Path
+    from core.document_store import DocumentStore
+    from core.llm_engine import query_llm
+
+    question = input("\nAsk over your documents:\n\n")
+
+    hits = DocumentStore().search(question, k=4)
+
+    if not hits:
+        print("\nNo relevant document content found.")
+        return
+
+    parts = []
+    for h in hits:
+        try:
+            parts.append(Path(h["file"]).read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            parts.append(h.get("snippet", ""))
+
+    context = "\n\n".join(parts)
+
+    prompt = (
+        "Answer the question using ONLY the context below. If the context is "
+        "insufficient, say so.\n\n"
+        f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
+    )
+
+    print("\n=== ANSWER (RAG over documents) ===\n")
+    # Documents are treated as private -> answered locally.
+    print(query_llm(prompt, sensitive=True))
+
+
+def view_escalations_interface():
+
+    from core.escalation import list_escalations
+
+    print("\n=== CLAUDE ESCALATION QUEUE ===\n")
+    print(list_escalations() or "No escalations recorded yet.")
+
+
 def main():
 
     show_banner()
@@ -403,6 +464,18 @@ def main():
             plan_and_execute_interface()
 
         elif choice == "16":
+
+            ingest_document_interface()
+
+        elif choice == "17":
+
+            ask_documents_interface()
+
+        elif choice == "18":
+
+            view_escalations_interface()
+
+        elif choice == "19":
 
             print(
                 "\nExiting system.\n"

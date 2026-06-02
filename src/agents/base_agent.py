@@ -17,6 +17,10 @@ class BaseAgent:
     # loop that degrades search/recall quality over time.
     distillable = True
 
+    # Subclasses set sensitive = True to pin their LLM calls to LOCAL models
+    # only (privacy) — used by agents that reason over personal memory/notes.
+    sensitive = False
+
     def __init__(
         self,
         name,
@@ -101,7 +105,7 @@ Task:
 Provide a complete, actionable response.
 """
 
-        result = query_llm(prompt)
+        result = query_llm(prompt, sensitive=self.sensitive)
 
         output_name = output_name or f"{self.name}_output"
 

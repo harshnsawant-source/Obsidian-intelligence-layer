@@ -48,7 +48,13 @@ python main.py
 
 Menu highlights: **#5** recall vault knowledge, **#6** contextual (semantic)
 search, **#14** execute an agent task (auto-routes), **#15** plan & execute a
-goal (decompose → route → run → synthesize).
+goal (decompose → route → run → synthesize), **#16** ingest a document,
+**#17** ask over documents (local RAG), **#18** view the Claude escalation queue.
+
+Memory/RAG is local: documents are chunked, embedded with `nomic-embed-text`,
+and retrieved by the same vector engine — answered on the local model
+(`sensitive=True`) so private content never leaves the device. Document
+metadata lives in SQLite (`src/core/db.py`).
 
 ## Tests
 

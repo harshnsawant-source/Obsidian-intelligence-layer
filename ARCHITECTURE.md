@@ -97,6 +97,28 @@ cooldown. Note the inverted economics here — the free cloud model is *both*
 faster and stronger than local, so local is used for privacy, trivial work
 (quota preservation), and as the always-on failover floor, not for cost.
 
+## 7. Memory / RAG (Phase 2, all local)
+
+```
+Document ──▶ DocumentStore.ingest        [core/document_store.py]
+   chunk (1500 chars, 200 overlap) → write chunk files → SQLite registry
+   → MemoryIndex(documents dir) embeds each chunk via nomic (LOCAL)
+
+Question ──▶ DocumentStore.search(q, k)  → cosine top-k chunks (LOCAL)
+          ──▶ query_llm(context+q, sensitive=True)  → answered on LOCAL model
+```
+
+- **SQLite** (`core/db.py`): document registry + episodes. Vectors stay in the
+  MemoryIndex (vectors-in-SQLite would be premature at this scale).
+- **Privacy boundary**: `BaseAgent.sensitive` (RetrievalAgent = True) and the
+  `sensitive=True` flag on document RAG pin those LLM calls to LOCAL models —
+  personal content and embeddings never leave the device.
+- **Vector store path**: MemoryIndex now → Chroma (embedded) when it grows →
+  Qdrant only at large scale. The `DocumentStore`/`MemoryIndex` seam keeps that
+  a one-adapter swap.
+- **Escalation queue** (`core/escalation.py`): HIGH-complexity tasks are
+  appended to `runtime/escalations.md` (Menu #18) for manual Claude Pro review.
+
 ## Routing
 
 `agent_engine.route_agent` uses whole-word keyword matching with best-score

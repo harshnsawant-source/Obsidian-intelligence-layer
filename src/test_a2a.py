@@ -17,7 +17,7 @@ def check(name, cond):
 llm_calls = {"n": 0}
 
 
-def fake_llm(prompt):
+def fake_llm(prompt, *args, **kwargs):
     llm_calls["n"] += 1
     return "ECHO::" + prompt
 

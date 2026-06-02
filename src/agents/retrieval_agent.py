@@ -9,6 +9,9 @@ class RetrievalAgent(BaseAgent):
     # pipeline like every other agent.
     distillable = False
 
+    # Reasons over personal memory -> keep its LLM calls local (privacy).
+    sensitive = True
+
     def __init__(self):
 
         super().__init__(

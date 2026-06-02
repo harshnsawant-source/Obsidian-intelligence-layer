@@ -34,6 +34,13 @@ MEMORY_INDEX = SRC / "state" / "index" / "vault_index.json"
 EMBED_INPUT_CHAR_LIMIT = 4000
 
 
+# Document RAG + structured stores (Phase 2). All local (privacy).
+DOCUMENTS_DIR = SRC / "state" / "documents"
+DOC_INDEX = SRC / "state" / "index" / "doc_index.json"
+DB_PATH = SRC / "state" / "db" / "oil.sqlite"
+ESCALATIONS = RUNTIME / "escalations.md"
+
+
 HELPERS = BASE_DIR.parent.parent / "helpers"
 
 
