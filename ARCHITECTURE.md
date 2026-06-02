@@ -55,6 +55,24 @@ Development ──delegate──▶ Retrieval            (live, 2 LLM calls)
 Operations  ──vault─────▶ peers' distilled outputs via build_context (1 LLM call)
 ```
 
+## 5. Planning / task decomposition (Planner)
+
+```
+Planner.run(goal):
+  decompose(goal)   ── 1 LLM call (JSON mode) ──▶ {steps:[{id,task,agent,depends_on}]}
+       • agent validated vs AgentManager else route_agent(task)
+       • robust parse (strips ```json fences); bad output → single-step fallback
+       • capped at MAX_STEPS (6)
+  execute(steps):
+       • topological order (Kahn); dependency cycle → safe ordered fallback
+       • inject completed dependency outputs into each step's task
+       • manager.dispatch(agent, task)  (runs agent.run → distills; depth-guarded)
+  synthesize(goal, results)  ── 1 LLM call ──▶ consolidated final answer
+  distill final plan into the vault
+```
+
+Built entirely on the router + broker + semantic memory + distillation. Menu #15.
+
 ## Routing
 
 `agent_engine.route_agent` uses whole-word keyword matching with best-score

@@ -1,4 +1,13 @@
+import sys
 from datetime import datetime
+
+# Models (esp. the cloud coder model) can emit unicode the Windows console's
+# default cp1252 encoding cannot print, which would raise UnicodeEncodeError.
+# Force UTF-8 output so printing model responses never crashes the menu.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 from core.retrieval_engine import (
     run_retrieval_scan
@@ -65,6 +74,10 @@ from capability.core.skill_loader import (
     load_skill
 )
 
+from core.planner import (
+    Planner
+)
+
 
 def show_banner():
 
@@ -110,7 +123,9 @@ def show_menu():
 
     print("14. Execute Agent Task")
 
-    print("15. Exit")
+    print("15. Plan & Execute Goal")
+
+    print("16. Exit")
 
 
 def generate_context_package():
@@ -294,6 +309,27 @@ def execute_task_interface():
     execute_agent_task(task)
 
 
+def plan_and_execute_interface():
+
+    goal = input(
+        "\nDescribe the goal to plan:\n\n"
+    )
+
+    planner = Planner()
+
+    outcome = planner.run(goal)
+
+    print("\n=== PLAN ===\n")
+
+    for step in outcome["steps"]:
+        deps = step["depends_on"] or "-"
+        print(f"  [{step['id']}] ({step['agent']}) {step['task']}  deps={deps}")
+
+    print("\n=== FINAL ANSWER ===\n")
+
+    print(outcome["final"])
+
+
 def main():
 
     show_banner()
@@ -363,6 +399,10 @@ def main():
             execute_task_interface()
 
         elif choice == "15":
+
+            plan_and_execute_interface()
+
+        elif choice == "16":
 
             print(
                 "\nExiting system.\n"

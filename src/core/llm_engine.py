@@ -2,6 +2,7 @@ import requests
 
 from core.log import get_logger
 from core.model_adapter import ModelAdapter
+from configs.paths import LLM_MODEL
 
 
 log = get_logger("llm_engine")
@@ -9,10 +10,14 @@ log = get_logger("llm_engine")
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-MODEL_NAME = "qwen3.5:4b"
+MODEL_NAME = LLM_MODEL
 
 
-def query_llm(prompt):
+def query_llm(prompt, fmt=None, max_tokens=8000):
+
+    # fmt="json" forces Ollama to emit valid JSON (and suppresses rambling /
+    # thinking traces) — used for structured calls like plan decomposition.
+    # max_tokens bounds generation so structured calls stay fast.
 
     payload = {
 
@@ -26,11 +31,15 @@ def query_llm(prompt):
 
             "temperature": 0.2,
 
-            "num_predict": 8000
+            "num_predict": max_tokens
 
         }
 
     }
+
+    if fmt:
+
+        payload["format"] = fmt
 
     try:
 

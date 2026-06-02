@@ -25,10 +25,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full pipelines.
 
 ```bash
 pip install -r requirements.txt
-# Local models via Ollama:
-ollama pull qwen3.5:4b          # generation
-ollama pull nomic-embed-text    # embeddings (semantic memory)
+ollama pull nomic-embed-text    # embeddings (semantic memory), local
 ```
+
+Generation defaults to `qwen3-coder:480b-cloud` (free, remote, fast). Override
+with `OIL_LLM_MODEL`, e.g. `OIL_LLM_MODEL=qwen3.5:4b` to run fully offline
+(`ollama pull qwen3.5:4b` first).
 
 If `nomic-embed-text` is not present, semantic retrieval degrades gracefully to
 keyword search (no crash).
@@ -41,7 +43,8 @@ python main.py
 ```
 
 Menu highlights: **#5** recall vault knowledge, **#6** contextual (semantic)
-search, **#14** execute an agent task (auto-routes to the right agent).
+search, **#14** execute an agent task (auto-routes), **#15** plan & execute a
+goal (decompose → route → run → synthesize).
 
 ## Tests
 

@@ -8,6 +8,7 @@ SRC = Path(__file__).resolve().parent / "src"
 SUITES = [
     "test_semantic_memory.py",
     "test_a2a.py",
+    "test_planner.py",
 ]
 
 
