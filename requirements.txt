@@ -1,0 +1,4 @@
+# Runtime dependencies for the Obsidian Intelligence Layer.
+# Python 3.14. Embeddings/LLM are served locally by Ollama over HTTP.
+requests>=2.31
+numpy>=2.0
