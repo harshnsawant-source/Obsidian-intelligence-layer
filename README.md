@@ -57,7 +57,7 @@ python run_tests.py        # runs the verified suites
 ## Layout
 
 ```
-configs/        paths + model config (single source of truth)
+src/configs/    paths + model config (single source of truth)
 src/agents/     agent implementations (thin; logic lives in BaseAgent)
 src/core/       engines: memory, embeddings, index, context, routing, broker
 src/capability/ skills + skill loader/router

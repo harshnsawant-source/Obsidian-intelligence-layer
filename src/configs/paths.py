@@ -1,7 +1,8 @@
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# src/configs/paths.py -> parents[2] is the project root.
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 DOCS = BASE_DIR / "docs"
 
@@ -11,9 +12,9 @@ LOGS = BASE_DIR / "logs"
 
 RUNTIME = BASE_DIR / "runtime"
 
-CONFIGS = BASE_DIR / "configs"
-
 SRC = BASE_DIR / "src"
+
+CONFIGS = SRC / "configs"
 
 
 KNOWLEDGE_VAULT = SRC / "knowledge" / "vault"

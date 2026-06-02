@@ -1,6 +1,7 @@
 import requests
 
 from core.log import get_logger
+from core.model_adapter import ModelAdapter
 
 
 log = get_logger("llm_engine")
@@ -49,31 +50,7 @@ def query_llm(prompt):
 
         log.debug("ollama response: %s", data)
 
-        result = data.get(
-            "response",
-            ""
-        ).strip()
-
-        if result:
-
-            return result
-
-        thinking = data.get(
-            "thinking",
-            ""
-        ).strip()
-
-        if thinking:
-
-            return (
-
-                "[NO FINAL ANSWER GENERATED]\n\n"
-
-                + thinking
-
-            )
-
-        return "No response generated."
+        return ModelAdapter.normalize_response(data)
 
     except Exception as error:
 

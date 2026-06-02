@@ -1,15 +1,8 @@
-import sys
 import json
 import hashlib
 from pathlib import Path
 
 import numpy as np
-
-# Make the project root importable so `configs.paths` resolves regardless
-# of which entrypoint loaded this module.
-_ROOT = Path(__file__).resolve().parents[2]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 from configs.paths import (
     KNOWLEDGE_VAULT,
