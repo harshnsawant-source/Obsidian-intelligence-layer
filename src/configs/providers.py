@@ -28,28 +28,9 @@ PROVIDER_CONFIG = [
         "cost": 0.0,
         "enabled": True,
     },
-
-    # ---- Optional free-cloud tiers: dormant until you add a (free) key. ----
-    {
-        "name": "groq",
-        "kind": "openai_compat",
-        "model": "llama-3.3-70b-versatile",
-        "base_url": "https://api.groq.com/openai/v1",
-        "api_key_env": "GROQ_API_KEY",
-        "tier": 2,
-        "local": False,
-        "cost": 0.0,
-        "enabled": True,
-    },
-    {
-        "name": "openrouter",
-        "kind": "openai_compat",
-        "model": "deepseek/deepseek-chat",
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key_env": "OPENROUTER_API_KEY",
-        "tier": 3,
-        "local": False,
-        "cost": 0.0,
-        "enabled": True,
-    },
 ]
+
+# Scope (for now): Ollama only — the free cloud coder + the local model.
+# Claude (Pro) stays a manual, human-in-the-loop escalation tier; it is not a
+# provider here (no API). The OpenAICompatProvider class remains available in
+# core/providers/base.py if a free key-based provider is ever added later.
