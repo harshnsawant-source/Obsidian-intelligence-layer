@@ -1,0 +1,6 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Generated semantic index (derived from the vault, rebuilt on demand)
+src/state/index/
