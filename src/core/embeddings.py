@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from collections import OrderedDict
 
 import requests
 
@@ -10,6 +11,10 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from configs.paths import EMBED_MODEL, EMBED_FALLBACK_MODEL
+from core.log import get_logger
+
+
+log = get_logger("embeddings")
 
 
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
@@ -30,6 +35,25 @@ _PERMANENT_ERRORS = (
     "not support",
     "try pulling"
 )
+
+# LRU cache of successful embeddings keyed by input text. Identical inputs
+# (e.g. the same task embedded by several agents in one A2A cascade, or a
+# repeated query) skip the ~2s embedding round-trip. Failures are never
+# cached, so the model is retried if it recovers.
+_CACHE_MAX = 512
+
+_embed_cache = OrderedDict()
+
+
+def _mark_unavailable(model):
+
+    if model not in _unavailable_models:
+
+        _unavailable_models.add(model)
+
+        log.warning(
+            "embedding model unavailable this session: %s", model
+        )
 
 
 def _try_endpoint(url, payload):
@@ -92,7 +116,7 @@ def _embed_one(text, model):
         return vector
 
     if permanent:
-        _unavailable_models.add(model)
+        _mark_unavailable(model)
         return None
 
     vector, permanent = _try_endpoint(
@@ -104,7 +128,7 @@ def _embed_one(text, model):
         return vector
 
     if permanent:
-        _unavailable_models.add(model)
+        _mark_unavailable(model)
 
     return None
 
@@ -117,10 +141,24 @@ def embed_text(text):
     if not text or not str(text).strip():
         return None
 
+    cached = _embed_cache.get(text)
+
+    if cached is not None:
+        _embed_cache.move_to_end(text)
+        return cached
+
     vector = _embed_one(text, EMBED_MODEL)
 
     if vector is None:
         vector = _embed_one(text, EMBED_FALLBACK_MODEL)
+
+    if vector is not None:
+
+        _embed_cache[text] = vector
+        _embed_cache.move_to_end(text)
+
+        if len(_embed_cache) > _CACHE_MAX:
+            _embed_cache.popitem(last=False)
 
     return vector
 

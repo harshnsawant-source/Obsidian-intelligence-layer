@@ -107,6 +107,29 @@ check("fallback used when embeddings fail",
       and res_fb[0]["score"] is None)
 mi.embed_text = fake_embed  # restore
 
+# Test 4b: embedding cache (efficiency) — success cached, failure retried
+_real_one = emb._embed_one
+ecalls = {"n": 0}
+emb._embed_cache.clear()
+emb._embed_one = lambda t, m: (ecalls.__setitem__("n", ecalls["n"] + 1)
+                               or [1.0, 2.0, 3.0])
+v1 = emb.embed_text("same query")
+v2 = emb.embed_text("same query")
+check("embed cache: identical text embedded once", ecalls["n"] == 1 and v1 == v2)
+emb.embed_text("different query")
+check("embed cache: new text triggers a fresh embed", ecalls["n"] == 2)
+emb._embed_cache.clear()
+emb._embed_one = lambda t, m: (ecalls.__setitem__("n", ecalls["n"] + 1)
+                               or None)
+ecalls["n"] = 0
+emb.embed_text("flaky")
+first = ecalls["n"]
+emb.embed_text("flaky")
+check("embed cache: failures are NOT cached (retried on recovery)",
+      ecalls["n"] > first)
+emb._embed_one = _real_one
+emb._embed_cache.clear()
+
 # Test 5: paraphrase retrieval (LIVE — needs Ollama embeddings; else skip)
 live = emb.embed_text("connectivity probe")
 if live is not None:

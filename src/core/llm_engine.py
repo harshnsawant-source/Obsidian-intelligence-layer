@@ -1,5 +1,10 @@
 import requests
 
+from core.log import get_logger
+
+
+log = get_logger("llm_engine")
+
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
@@ -42,8 +47,7 @@ def query_llm(prompt):
 
         data = response.json()
 
-        print("\n=== DEBUG JSON ===\n")
-        print(data)
+        log.debug("ollama response: %s", data)
 
         result = data.get(
             "response",
@@ -72,5 +76,7 @@ def query_llm(prompt):
         return "No response generated."
 
     except Exception as error:
+
+        log.error("LLM call failed: %s", error)
 
         return f"LLM ERROR: {error}"
