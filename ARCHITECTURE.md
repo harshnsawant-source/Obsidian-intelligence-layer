@@ -73,6 +73,30 @@ Planner.run(goal):
 
 Built entirely on the router + broker + semantic memory + distillation. Menu #15.
 
+## 6. LLM orchestration router (multi-provider, resilient)
+
+`query_llm()` is a thin facade over `ProviderRouter` (core/router.py):
+
+```
+query_llm(prompt, fmt, max_tokens, sensitive)
+  └─ score_complexity → bar (low/medium/high)        # cheap, no LLM
+  └─ order providers:
+       sensitive       → local only          (privacy: never leaves device)
+       bar == low       → local first         (preserve free-cloud quota)
+       else             → best cloud first, local floor   (quality)
+  └─ try in order, circuit-breaker aware:
+       success → return ; failure → trip breaker, fail over
+       floor = local Ollama ; final = canned string (never raises)
+  └─ bar == high → log a manual "escalate to Claude (Pro)" suggestion
+```
+
+Providers (configs/providers.py) are tiered and config-driven; `openai_compat`
+ones (Groq/OpenRouter/Together) activate automatically when their API key env
+is set. Recovery is lazy: a circuit breaker half-opens for one probe after a
+cooldown. Note the inverted economics here — the free cloud model is *both*
+faster and stronger than local, so local is used for privacy, trivial work
+(quota preservation), and as the always-on failover floor, not for cost.
+
 ## Routing
 
 `agent_engine.route_agent` uses whole-word keyword matching with best-score

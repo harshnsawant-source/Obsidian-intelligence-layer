@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 
@@ -21,11 +20,8 @@ CONFIGS = SRC / "configs"
 KNOWLEDGE_VAULT = SRC / "knowledge" / "vault"
 
 
-# Generation model. Default to the free, far more capable cloud coder model
-# (remote GPU, ~9x faster than local qwen3.5:4b). Override with OIL_LLM_MODEL,
-# e.g. "qwen3.5:4b" to run fully offline.
-LLM_MODEL = os.environ.get("OIL_LLM_MODEL", "qwen3-coder:480b-cloud")
-
+# Generation models are defined in configs/providers.py and selected at
+# runtime by the orchestration router (core/router.py). Embeddings stay local.
 EMBED_MODEL = "nomic-embed-text"
 
 EMBED_FALLBACK_MODEL = "qwen3.5:4b"

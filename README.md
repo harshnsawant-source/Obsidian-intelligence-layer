@@ -28,9 +28,13 @@ pip install -r requirements.txt
 ollama pull nomic-embed-text    # embeddings (semantic memory), local
 ```
 
-Generation defaults to `qwen3-coder:480b-cloud` (free, remote, fast). Override
-with `OIL_LLM_MODEL`, e.g. `OIL_LLM_MODEL=qwen3.5:4b` to run fully offline
-(`ollama pull qwen3.5:4b` first).
+Generation is handled by a **multi-provider orchestration router**
+(`core/router.py`, providers in `configs/providers.py`): it scores task
+complexity, prefers the free cloud model `qwen3-coder:480b-cloud` for quality,
+keeps `sensitive=True` calls and trivial work on the local `qwen3.5:4b`, and
+fails over (circuit-breaker aware) to local if the cloud is down — so it never
+becomes unavailable. Free cloud providers (Groq/OpenRouter) activate
+automatically if you set their API key env var.
 
 If `nomic-embed-text` is not present, semantic retrieval degrades gracefully to
 keyword search (no crash).
