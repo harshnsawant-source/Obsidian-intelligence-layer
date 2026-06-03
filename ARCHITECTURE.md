@@ -124,3 +124,37 @@ Question ──▶ DocumentStore.search(q, k)  → cosine top-k chunks (LOCAL)
 `agent_engine.route_agent` uses whole-word keyword matching with best-score
 selection (multi-intent tasks go to the strongest signal; substrings like
 "research" no longer trip the "search" keyword).
+
+## Legacy capability layer (`src/capability/`)
+
+`src/capability/` is the project's **v1 architecture** — a file-based,
+folder-per-skill subsystem from the initial commit. Most of it has been
+**superseded by `src/core/`**, which reimplemented the good ideas with real
+machinery (semantic retrieval, the resilient router, the permission policy, the
+eval harness). The migration is intentionally partial: a few pieces are still
+load-bearing and the rest is kept as dormant scaffolding for future roadmap
+work (session memory, workflow execution).
+
+**Still live — do not remove:**
+
+| Component | Used by | Role |
+|---|---|---|
+| `skills/knowledge_distill/skill.py` | `BaseAgent.run()`, `planner.py` | The learning loop's distiller (actively maintained; calls `core.llm_engine` + `core.curator`). |
+| `skills/knowledge_search/skill.py` | `main.py` Menu #6 | Thin wrapper that delegates to `core.memory_index.MemoryIndex`. |
+| `core/runtime_context.py` (`RuntimeContext` → `MemoryStore`, `KnowledgeStore`) | `BaseAgent`, `planner` | The vault/memory file stores the live skills write through. |
+| `core/search.py` (`search_directory`) | `core/memory_index.py` | Keyword fallback when embeddings are unavailable. |
+| `core/skill_loader.py` (`load_skill`) | `BaseAgent`, `planner`, `main` | Dynamic loader for the two live skills. |
+
+**Dormant (kept, not wired):** the skills `memory_write`, `memory_recall`,
+`context_build` (superseded by `core/context_builder.py`), `knowledge_extract`,
+`skill_create`, `task_reflect`, `trace_search`, `workflow_execute`, plus their
+`activate_all.py` / `skill_activate` / `meta/skill_lint` support. They lint and
+activate but nothing in `core/` calls them. Only `knowledge_distill` is covered
+by the test suites.
+
+**Pruned (was dead — defined but never called from anywhere):**
+`core/skill_router.py` (`SkillRouter`, a naive substring router superseded by
+`agent_engine.route_agent`), `core/skill_registry.py` (`discover_skills`),
+`core/permissions.py` (`validate_permissions`, an approve-everything stub
+superseded by `core/tools/policy.py`), and the `TraceStore` in
+`runtime_context.py` (instantiated but never logged to).
