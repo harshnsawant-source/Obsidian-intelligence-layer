@@ -218,6 +218,9 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 | `adb375a` | Add Run Tool Agent menu entry (#21) |
 | `e96858b` | Harden distillation against unusable LLM output |
 | `a601941` | Let distillation prefer cloud (prefer_cloud routing hint) |
+| `bb0de9c` | Update SUMMARY.md with distillation fixes |
+| `20a0db7` | Cleanup: remove dead module + non-suite scratch tests |
+| `2cba257` | Prune dead capability-layer code + document v1/v2 split |
 
 ---
 
