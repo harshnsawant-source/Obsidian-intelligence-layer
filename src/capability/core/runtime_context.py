@@ -1,6 +1,4 @@
 from pathlib import Path
-from datetime import datetime
-import json
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -142,67 +140,6 @@ class KnowledgeStore:
             return file.read()
 
 
-class TraceStore:
-
-    def __init__(self):
-
-        self.base_path = (
-            PROJECT_ROOT /
-            "state" /
-            "traces"
-        )
-
-        self.base_path.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-    def log(
-
-        self,
-        agent,
-        task,
-        response
-
-    ):
-
-        timestamp = datetime.now().isoformat()
-
-        trace = {
-
-            "timestamp": timestamp,
-            "agent": agent,
-            "task": task,
-            "response": response
-
-        }
-
-        filename = (
-            timestamp
-            .replace(":", "-")
-            + ".json"
-        )
-
-        file_path = (
-            self.base_path /
-            filename
-        )
-
-        with open(
-            file_path,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                trace,
-                file,
-                indent=4
-            )
-
-        return str(file_path)
-
-
 class RuntimeContext:
 
     def __init__(self):
@@ -210,5 +147,3 @@ class RuntimeContext:
         self.memory = MemoryStore()
 
         self.knowledge = KnowledgeStore()
-
-        self.trace = TraceStore()
