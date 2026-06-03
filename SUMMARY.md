@@ -3,8 +3,9 @@
 A local-first, free, resilient multi-agent AI system. Agents reason with a
 hybrid LLM stack (free cloud + local Ollama), share a semantic knowledge vault,
 learn from their own outputs, delegate to one another, plan multi-step goals,
-and answer questions over private documents — with no paid APIs or
-subscriptions, and no single point of failure.
+answer questions over private documents, **verify and self-correct their work,
+take actions through gated tools, and measure their own quality** — with no paid
+APIs or subscriptions, and no single point of failure.
 
 This document summarizes the work completed across the build sessions.
 
@@ -37,11 +38,16 @@ USER / AGENT
 
 ## 2. Capabilities built
 
-### Learning loop (closed)
+### Learning loop (closed, gated & self-cleaning)
 Every completed agent output auto-distills into the knowledge vault
 (`src/knowledge/vault/`) via `BaseAgent.run()`. Recall (Menu #5) and contextual
 search (Menu #6) read the vault. Fixed the original break where agent output
-went to `memories/` and never reached the vault.
+went to `memories/` and never reached the vault. The loop is now also **gated**
+(failed-verification output is never distilled — Phase 3) and **self-cleaning**:
+distillation skips error/empty outcomes, writes a real LLM-distilled lesson
+(not a verbatim copy), and uses a deterministic content-keyed filename so
+re-runs overwrite instead of duplicating; the curator (Phase 7) prunes/dedupes
+what slips through.
 
 ### Unified agent pipeline
 All agents share one pipeline in `BaseAgent.query_agent`
@@ -97,6 +103,38 @@ verdict**: output that fails verification is *not* written to the vault, so
 errors can no longer compound through retrieval. Design blueprint in
 `VERIFICATION.md` (written to be reusable across orchestration systems).
 
+### Tool execution framework (Phase 6)
+Lets agents take actions — run code, read/write files, fetch web — under one
+auditable permission policy that generalizes the sandbox's default-deny posture.
+- `core/tools/base.py` — `Tool` / `ToolResult` / `Risk` tiers (SAFE / MODERATE /
+  DANGEROUS); risk lives on the tool, the decision lives in the policy.
+- `core/tools/policy.py` — a single `decide()`: **privacy egress block**
+  (sensitive runs forbid all network tools, outranking the allow-list),
+  **default-deny DANGEROUS** unless granted by name, allow SAFE/MODERATE.
+- `core/tools/builtin.py` — `python` (sandbox), `read_file`/`write_file`
+  (path-jailed), `web_fetch` + `shell` (DANGEROUS, gated).
+- `core/tools/loop.py` — a model-agnostic **ReAct** loop (JSON action protocol)
+  + `ToolRegistry`: bounded, never raises, `generate` injected; denied tools are
+  hidden from the catalog *and* re-checked at call time (defense in depth).
+- `agents/tool_agent.py` — `ToolAgent(BaseAgent)`: `execute()` runs the loop and
+  inherits routing, memory, distillation, and the verification gate; `sensitive`
+  flows into the policy. Blueprint: `TOOL_FRAMEWORK.md`.
+
+### Feedback / evaluation loop (Phase 7)
+Closes the learning loop: **measure** quality and **curate** memory.
+- `core/eval/graders.py` — graders *are* verifiers (`grade → Verdict`):
+  `contains` / `exact` / `regex` + `code` (sandbox) and `schema` reused from
+  Phase 3. The sandbox is a free, objective grader (no LLM judge).
+- `core/eval/harness.py` — `load_cases` (JSONL) + `run_eval(run_fn injected)` →
+  `EvalReport` (pass-rate, mean score, per-case); persists a summary line to
+  `runtime/eval_runs.jsonl` so quality is a **tracked trend / regression gate**.
+  Never raises. Starter set in `core/eval/cases.jsonl`.
+- `core/curator.py` — `scan_vault` → reviewable `CurationPlan` (prune
+  error/empty notes; exact-hash + embedding near-dup dedupe), `apply_plan`.
+  **Dry-run by default, vault-scoped deletes only, reasoned per file.**
+- `main.py` — Menu #19 Run Eval, #20 Curate Vault (dry-run → confirm), #21 Exit.
+  Blueprint: `FEEDBACK_EVAL.md`.
+
 ### Foundations & hygiene
 - Packaging: `configs/` moved under `src/`, removed all `sys.path` hacks,
   added `pyproject.toml`.
@@ -133,13 +171,15 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 
 ## 5. Testing
 
-`python run_tests.py` → **6 suites, 89 checks, all passing**:
+`python run_tests.py` → **8 suites, 167 checks, all passing**:
 - `test_semantic_memory.py` — indexing, incremental, ranking, paraphrase, cache, fallback
 - `test_a2a.py` — delegation, consumption, depth guard, distillation, no-broker safety
 - `test_planner.py` — decompose, fallback, ordering, dependency injection, cycle safety, synth, distill
 - `test_provider_router.py` — scoring, routing, privacy, failover, circuit-breaker
 - `test_phase2.py` — chunking, ingest, SQLite registry, doc search, sensitivity flags, escalation queue
 - `test_verification.py` — refine loop, aggregation, schema/code/critic verifiers, sandbox (real subprocess), distillation gate
+- `test_tools.py` — permission matrix, path jail, sandbox tool, web-fetch gate, ReAct loop (execute/deny/unknown/raise/exhaustion)
+- `test_feedback.py` — graders, eval harness (fake run_fn), curator prune/dedupe (temp vault), distill source fixes (poison guard, deterministic filename)
 
 ---
 
@@ -158,26 +198,32 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 | `079ffd1` | SUMMARY.md (full project overview) |
 | `2abf98c` | SKILL.md (operating + development guide) |
 | `fe3aab8` | Phase 3: verification / self-correction loop + sandboxed execution |
+| `d9235ee` | Update SUMMARY.md for Phase 3 |
+| `788b69a` | Phase 6: tool execution framework (permission-gated, ReAct loop) |
+| `3eb114b` | Phase 7: feedback / eval loop (measure + curate) |
+| `5db33ec` | Fix knowledge_distill at the source + apply vault cleanup |
 
 ---
 
 ## 7. Status & what's next
 
-**Status:** the target architecture is essentially complete — free-only,
-privacy-first, resilient, and tested. It cannot go down (local floor + canned
-fallback), nothing sensitive leaves the device, and it costs nothing.
+**Status:** the full roadmap is complete — semantic memory, A2A, planner,
+resilient router, document RAG, **verification/self-correction (#3)**,
+**tool execution (#6)**, and the **feedback/eval loop (#7)** are all built,
+tested, and live-verified against the cloud model. It cannot go down (local
+floor + canned fallback), nothing sensitive leaves the device, it costs nothing,
+it can act (gated tools), it self-corrects, it measures its own quality, and its
+memory is gated + self-cleaning.
 
-**Next steps:**
-1. **Tool execution framework** (roadmap #6): generalize the sandbox's
-   default-deny / explicit-enable permission posture into file/web/shell tools.
-2. **Feedback / learning loop** (roadmap #7): use `Verdict.ok/score` as the
-   pass/fail signal to activate the dormant `eval.jsonl` harness (prove
-   verification + tools actually raise quality) + vault dedupe/prune.
-3. One **live LLM-in-the-loop** run of the verification correction pass (the
-   deterministic path is tested; the live correction pass is not yet).
-4. Migrate `MemoryIndex` → **Chroma** (embedded) when note/chunk count grows.
-5. Short-term **session memory** (deferred — no chat-loop consumer yet).
+**Optional next steps (none blocking):**
+1. **LLM-judge grader** for subjective tasks + a richer eval set.
+2. **Interactive permission policy:** escalate a DANGEROUS tool request to the
+   human (via the escalation queue) instead of flat-denying — a `Policy` swap,
+   no tool changes.
+3. Migrate `MemoryIndex` → **Chroma** (embedded) when note/chunk count grows.
+4. Short-term **session memory** (deferred — no chat-loop consumer yet).
+5. A `main.py` menu entry to run a `ToolAgent` interactively.
 
-**Run it:** `cd src && python main.py` (Menu #14 execute agent, #15 plan a goal,
-#16 ingest a doc, #17 ask over docs, #18 escalation queue).
-`OIL_LOG_LEVEL=DEBUG` for internals.
+**Run it:** `cd src && python main.py` — Menu #14 execute agent, #15 plan a goal,
+#16 ingest a doc, #17 ask over docs, #18 escalation queue, **#19 run eval suite,
+#20 curate vault**. `OIL_LOG_LEVEL=DEBUG` for internals.
