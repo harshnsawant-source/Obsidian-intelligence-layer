@@ -13,6 +13,7 @@ SUITES = [
     "test_phase2.py",
     "test_verification.py",
     "test_tools.py",
+    "test_feedback.py",
 ]
 
 

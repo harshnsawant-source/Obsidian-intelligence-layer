@@ -9,3 +9,6 @@ src/state/index/
 src/state/documents/
 src/state/db/
 runtime/escalations.md
+
+# Phase 7 eval run history (append-only quality trend, regenerated)
+runtime/eval_runs.jsonl

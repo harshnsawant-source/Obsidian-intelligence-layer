@@ -131,7 +131,11 @@ def show_menu():
 
     print("18. View Escalations")
 
-    print("19. Exit")
+    print("19. Run Eval Suite")
+
+    print("20. Curate Vault (prune + dedupe)")
+
+    print("21. Exit")
 
 
 def generate_context_package():
@@ -391,6 +395,58 @@ def view_escalations_interface():
     print(list_escalations() or "No escalations recorded yet.")
 
 
+def run_eval_interface():
+
+    from core.eval.harness import load_cases, run_eval, history
+    from core.llm_engine import query_llm
+
+    cases = load_cases()
+
+    print("\n=== EVAL SUITE ===\n")
+
+    if not cases:
+        print("No eval cases found (src/core/eval/cases.jsonl).")
+        return
+
+    # The thing under test: a plain model call. Swap for an agent/plan to eval
+    # those instead — the harness doesn't care.
+    report = run_eval(cases, lambda task: query_llm(task), label="menu")
+
+    print(report.render())
+
+    prior = history(limit=6)
+    if len(prior) > 1:
+        print("\nRecent runs (pass_rate):")
+        for row in prior:
+            print(f"  {row['timestamp'][:19]}  {row['label']:<10} "
+                  f"{row['pass_rate']:.0%}  (n={row['n']})")
+
+
+def curate_vault_interface():
+
+    from core.curator import scan_vault, apply_plan
+
+    print("\n=== VAULT CURATION (dry run) ===\n")
+
+    plan = scan_vault()
+
+    print(plan.render())
+
+    if not plan.to_delete:
+        print("\nVault is clean — nothing to do.")
+        return
+
+    confirm = input(
+        f"\nDelete {len(plan.to_delete)} note(s)? This is irreversible. [y/N] "
+    ).strip().lower()
+
+    if confirm == "y":
+        deleted = apply_plan(plan)
+        print(f"\nRemoved {len(deleted)} note(s).")
+    else:
+        print("\nNo changes made.")
+
+
 def main():
 
     show_banner()
@@ -476,6 +532,14 @@ def main():
             view_escalations_interface()
 
         elif choice == "19":
+
+            run_eval_interface()
+
+        elif choice == "20":
+
+            curate_vault_interface()
+
+        elif choice == "21":
 
             print(
                 "\nExiting system.\n"

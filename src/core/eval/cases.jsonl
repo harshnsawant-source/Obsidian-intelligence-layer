@@ -1,0 +1,6 @@
+# Starter eval set. One JSON object per line. Lines starting with # are ignored.
+# Graders: contains | exact | regex | code | schema. See FEEDBACK_EVAL.md.
+{"id": "arith", "task": "What is 7 multiplied by 6? Reply with just the number.", "grader": "contains", "expected": "42"}
+{"id": "code_add", "task": "Write a Python function add(a, b) that returns a + b. Return ONLY one ```python code block, no prose.", "grader": "code", "test": "assert add(2, 3) == 5\nassert add(-1, 1) == 0\nprint('ok')"}
+{"id": "code_iseven", "task": "Write a Python function is_even(n) that returns True if n is even, else False. Return ONLY one ```python code block, no prose.", "grader": "code", "test": "assert is_even(4) is True\nassert is_even(7) is False\nprint('ok')"}
+{"id": "json_person", "task": "Return a JSON object describing a person named Ada who is 36 years old, using the keys name and age. Output JSON only.", "grader": "schema", "required_keys": ["name", "age"]}
