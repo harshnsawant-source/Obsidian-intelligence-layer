@@ -3,6 +3,9 @@ from agents.base_agent import BaseAgent
 
 class StrategyAgent(BaseAgent):
 
+    # Phase 5: strategy records decisions (and may flag risks/assumptions).
+    contributes = ["decisions", "risks", "assumptions"]
+
     def __init__(self):
 
         super().__init__(

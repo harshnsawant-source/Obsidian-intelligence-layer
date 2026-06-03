@@ -95,17 +95,17 @@ class PlannerAgent(BaseAgent):
 
     def merge(self, goal, ctx):
 
-        joined = "\n\n".join(
-            f"## {o['agent']}\nSubtask: {o['task']}\n\n{o['output']}"
-            for o in ctx.outputs
-        )
+        # Reason over the BOUNDED structured context (findings/decisions/
+        # artifacts/risks/assumptions + recent outputs), not raw text only, so
+        # the planner consolidates accumulated reasoning — within a budget.
+        context_view = ctx.render_summary()
 
         prompt = (
-            "Combine the subtask results into a single, coherent report that "
-            "fully addresses the goal. Integrate the findings into one narrative "
-            "— do not merely concatenate them.\n\n"
+            "Combine the accumulated reasoning into a single, coherent report "
+            "that fully addresses the goal. Integrate the findings, decisions, "
+            "artifacts, and risks into one narrative — do not merely list them.\n\n"
             f"Goal:\n{goal}\n\n"
-            f"Subtask results:\n{joined}\n\n"
+            f"Accumulated context:\n{context_view}\n\n"
             f"Final combined report:"
         )
 

@@ -5,6 +5,9 @@ class DevelopmentAgent(
     BaseAgent
 ):
 
+    # Phase 5: development produces artifacts (and may flag risks/assumptions).
+    contributes = ["artifacts", "risks", "assumptions"]
+
     def __init__(self):
 
         super().__init__(

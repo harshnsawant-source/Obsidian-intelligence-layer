@@ -9,6 +9,7 @@ SUITES = [
     "test_semantic_memory.py",
     "test_a2a.py",
     "test_planner.py",
+    "test_shared_reasoning.py",
     "test_provider_router.py",
     "test_phase2.py",
     "test_verification.py",

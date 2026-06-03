@@ -11,6 +11,7 @@ from capability.core.runtime_context import RuntimeContext
 from capability.core.skill_loader import load_skill
 
 from core.execution_context import SharedExecutionContext
+from core.contributions import parse_contributions
 
 
 log = get_logger("planner")
@@ -362,6 +363,11 @@ class PlanExecutor:
 
             ctx.record_output(agent, task, output)
 
+            # Phase 5: extract any structured reasoning the agent emitted and
+            # accumulate it, stamped with the originating agent (provenance).
+            # No block -> {} -> no-op, so text-only agents are unaffected.
+            ctx.merge_contributions(parse_contributions(output), agent=agent)
+
         return ctx
 
     @staticmethod
@@ -369,7 +375,9 @@ class PlanExecutor:
 
         # Subtask receives `task + shared_execution_context` (rendered as text,
         # since agents take a string — the agent architecture is unchanged).
-        context_text = ctx.render()
+        # render_summary is BOUNDED + ranked so the prompt can't grow without
+        # limit as findings/decisions/etc accumulate (hardening #1).
+        context_text = ctx.render_summary()
 
         if not context_text:
             return task

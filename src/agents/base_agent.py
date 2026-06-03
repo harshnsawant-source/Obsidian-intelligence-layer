@@ -7,6 +7,7 @@ from core.llm_engine import query_llm
 from core.memory_writer import save_memory
 from core.context_builder import build_context
 from core.verification import refine
+from core.contributions import build_instruction
 
 
 class BaseAgent:
@@ -29,6 +30,13 @@ class BaseAgent:
 
     # Max generate attempts when verifiers are present (1 generate + retries).
     max_verify_tries = 2
+
+    # Phase 5: structured-reasoning contribution types this agent is PROMPTED to
+    # emit (any of: findings, decisions, artifacts, risks, assumptions). The
+    # PlanExecutor parses whatever block is emitted and accumulates it into the
+    # SharedExecutionContext. Default [] = the agent emits plain text only and
+    # behaves exactly as before (backward compatible).
+    contributes = []
 
     def __init__(
         self,
@@ -91,6 +99,11 @@ class BaseAgent:
         # Subclasses customise only role / instructions / task framing.
 
         role = role or self.specialty
+
+        # Append the contribution protocol only when this agent opts in; an
+        # empty `contributes` leaves the prompt byte-for-byte unchanged.
+        if self.contributes:
+            instructions = (instructions or "") + build_instruction(self.contributes)
 
         memory_context = build_context(task)
 
