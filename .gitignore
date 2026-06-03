@@ -12,3 +12,6 @@ runtime/escalations.md
 
 # Phase 7 eval run history (append-only quality trend, regenerated)
 runtime/eval_runs.jsonl
+
+# ToolAgent work directory (path-jailed scratch space for file tools)
+src/state/toolspace/

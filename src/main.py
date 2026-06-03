@@ -135,7 +135,9 @@ def show_menu():
 
     print("20. Curate Vault (prune + dedupe)")
 
-    print("21. Exit")
+    print("21. Run Tool Agent")
+
+    print("22. Exit")
 
 
 def generate_context_package():
@@ -447,6 +449,51 @@ def curate_vault_interface():
         print("\nNo changes made.")
 
 
+def tool_agent_interface():
+
+    from agents.tool_agent import ToolAgent
+    from core.tools.builtin import (
+        PythonTool, ReadFileTool, WriteFileTool, WebFetchTool,
+    )
+    from configs.paths import SRC
+
+    # File tools are jailed to a dedicated work directory — they can't read or
+    # write outside it.
+    workroot = SRC / "state" / "toolspace"
+    workroot.mkdir(parents=True, exist_ok=True)
+
+    task = input("\nEnter a task for the tool-using agent:\n\n")
+
+    # web_fetch is DANGEROUS (network egress) → default-denied. Granting it here
+    # demonstrates the explicit-allow path of the permission policy.
+    allow_net = input(
+        "\nAllow network access (web_fetch)? [y/N] "
+    ).strip().lower() == "y"
+
+    tools = [
+        PythonTool(),
+        ReadFileTool(str(workroot)),
+        WriteFileTool(str(workroot)),
+    ]
+
+    allow = []
+
+    if allow_net:
+        tools.append(WebFetchTool())
+        allow = ["web_fetch"]
+
+    agent = ToolAgent("tool-agent", "General Tool User")
+    agent.tools = tools
+    agent.allow = allow
+
+    print(
+        f"\nTools available: {', '.join(t.name for t in tools)} "
+        f"(work dir: {workroot})"
+    )
+
+    agent.run(task)
+
+
 def main():
 
     show_banner()
@@ -540,6 +587,10 @@ def main():
             curate_vault_interface()
 
         elif choice == "21":
+
+            tool_agent_interface()
+
+        elif choice == "22":
 
             print(
                 "\nExiting system.\n"
