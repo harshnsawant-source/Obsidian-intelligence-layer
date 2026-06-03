@@ -204,5 +204,58 @@ finally:
     shutil.rmtree(outside, ignore_errors=True)
 
 
+# ---- knowledge_distill source fixes --------------------------------------
+
+from capability.core.skill_loader import load_skill
+
+distill = load_skill("knowledge_distill")
+distill.query_llm = lambda *a, **k: "Concise distilled lesson."  # stub, no live call
+
+class FakeKnowledge:
+    def __init__(self):
+        self.writes = {}
+    def write(self, filename, content):
+        self.writes[filename] = content
+        return filename
+
+class FakeCtx:
+    def __init__(self):
+        self.knowledge = FakeKnowledge()
+
+# error outcome is skipped (poison guard)
+ctx = FakeCtx()
+r = distill.execute(ctx, {"task": "x", "outcome": "LLM ERROR: connection refused"})
+check("distill: error outcome skipped", r.get("skipped") and not ctx.knowledge.writes)
+
+# empty outcome skipped
+ctx = FakeCtx()
+r = distill.execute(ctx, {"task": "x", "outcome": "   "})
+check("distill: empty outcome skipped", r.get("skipped") and not ctx.knowledge.writes)
+
+# canned router fallback skipped
+ctx = FakeCtx()
+r = distill.execute(ctx, {"task": "x", "outcome": "[orchestrator] All providers are unavailable"})
+check("distill: canned fallback skipped", bool(r.get("skipped")))
+
+# normal outcome -> saved, learning is the distilled summary (not verbatim)
+ctx = FakeCtx()
+r = distill.execute(ctx, {"task": "Build a thing", "outcome": "It works and here is a long enough outcome to matter."})
+check("distill: normal outcome saved", "saved" in r and len(ctx.knowledge.writes) == 1)
+check("distill: learning is distilled, not a verbatim copy",
+      r["learning"] == "Concise distilled lesson.")
+
+# deterministic filename: same task -> same file (dedupe at source)
+ctx1, ctx2 = FakeCtx(), FakeCtx()
+distill.execute(ctx1, {"task": "Same Task", "outcome": "first run outcome content here"})
+distill.execute(ctx2, {"task": "same   task", "outcome": "second run different content here"})
+f1 = list(ctx1.knowledge.writes)[0]
+f2 = list(ctx2.knowledge.writes)[0]
+check("distill: same task -> same filename (dedupe at source)", f1 == f2)
+ctx3 = FakeCtx()
+distill.execute(ctx3, {"task": "A Different Task", "outcome": "different task outcome content"})
+f3 = list(ctx3.knowledge.writes)[0]
+check("distill: different task -> different filename", f3 != f1)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
