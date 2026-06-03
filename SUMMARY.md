@@ -86,6 +86,17 @@ single-step fallback on bad output, cycle-safe, capped at MAX_STEPS.
 - `core/escalation.py` — HIGH-complexity tasks queued to `runtime/escalations.md`
   for manual Claude Pro review (Menu #18).
 
+### Verification / self-correction + sandboxed execution (Phase 3)
+A generic **generate → verify → correct** layer (`core/verification.py`,
+`refine()`) with pluggable verifiers (`core/verifiers.py`): schema (JSON), code
+(runs in `core/sandbox.py` — subprocess-isolated, timeout-bounded, opt-in), and
+critic (a 2nd LLM review pass). Wired into `BaseAgent` (agents opt in via
+`verifiers=[]`; no verifiers ⇒ unchanged single call) and `Planner(verify=True)`
+(critic on synthesis). Crucially, `run()` now **gates distillation on the
+verdict**: output that fails verification is *not* written to the vault, so
+errors can no longer compound through retrieval. Design blueprint in
+`VERIFICATION.md` (written to be reusable across orchestration systems).
+
 ### Foundations & hygiene
 - Packaging: `configs/` moved under `src/`, removed all `sys.path` hacks,
   added `pyproject.toml`.
@@ -122,12 +133,13 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 
 ## 5. Testing
 
-`python run_tests.py` → **5 suites, 58 checks, all passing**:
+`python run_tests.py` → **6 suites, 89 checks, all passing**:
 - `test_semantic_memory.py` — indexing, incremental, ranking, paraphrase, cache, fallback
 - `test_a2a.py` — delegation, consumption, depth guard, distillation, no-broker safety
 - `test_planner.py` — decompose, fallback, ordering, dependency injection, cycle safety, synth, distill
 - `test_provider_router.py` — scoring, routing, privacy, failover, circuit-breaker
 - `test_phase2.py` — chunking, ingest, SQLite registry, doc search, sensitivity flags, escalation queue
+- `test_verification.py` — refine loop, aggregation, schema/code/critic verifiers, sandbox (real subprocess), distillation gate
 
 ---
 
@@ -143,6 +155,9 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 | `a1b104e` | Multi-provider LLM orchestration router |
 | `dbbaeed` | Scope providers to Ollama only |
 | `0b9243a` | Phase 2: document RAG + privacy flag + escalation + SQLite |
+| `079ffd1` | SUMMARY.md (full project overview) |
+| `2abf98c` | SKILL.md (operating + development guide) |
+| `fe3aab8` | Phase 3: verification / self-correction loop + sandboxed execution |
 
 ---
 
@@ -152,12 +167,16 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 privacy-first, resilient, and tested. It cannot go down (local floor + canned
 fallback), nothing sensitive leaves the device, and it costs nothing.
 
-**Optional next steps (none urgent):**
-1. Short-term **session memory** (deferred — no chat-loop consumer yet).
-2. Migrate `MemoryIndex` → **Chroma** (embedded) when note/chunk count grows.
-3. **Feedback / learning loop** (roadmap #7): vault dedupe/prune + activate the
-   dormant `eval.jsonl` evaluation harness.
-4. **Tool execution framework** (roadmap #6) with a permission/safety layer.
+**Next steps:**
+1. **Tool execution framework** (roadmap #6): generalize the sandbox's
+   default-deny / explicit-enable permission posture into file/web/shell tools.
+2. **Feedback / learning loop** (roadmap #7): use `Verdict.ok/score` as the
+   pass/fail signal to activate the dormant `eval.jsonl` harness (prove
+   verification + tools actually raise quality) + vault dedupe/prune.
+3. One **live LLM-in-the-loop** run of the verification correction pass (the
+   deterministic path is tested; the live correction pass is not yet).
+4. Migrate `MemoryIndex` → **Chroma** (embedded) when note/chunk count grows.
+5. Short-term **session memory** (deferred — no chat-loop consumer yet).
 
 **Run it:** `cd src && python main.py` (Menu #14 execute agent, #15 plan a goal,
 #16 ingest a doc, #17 ask over docs, #18 escalation queue).
