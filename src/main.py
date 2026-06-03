@@ -137,7 +137,9 @@ def show_menu():
 
     print("21. Run Tool Agent")
 
-    print("22. Exit")
+    print("22. Run Lift Benchmark")
+
+    print("23. Exit")
 
 
 def generate_context_package():
@@ -525,6 +527,23 @@ def tool_agent_interface():
     agent.run(task)
 
 
+def run_lift_benchmark_interface():
+    from core.eval.lift_benchmark import run_benchmark
+    print("\n=== ORCHESTRATION LIFT BENCHMARK ===\n")
+    K_str = input("Number of trials per case [3]: ").strip()
+    K = int(K_str) if K_str.isdigit() else 3
+    print("\nExecuting benchmark (this will make real LLM calls)...")
+    try:
+        report = run_benchmark(K=K)
+        print("\n=== BENCHMARK COMPLETED ===")
+        print("\nCategory Results:")
+        for cat in report["categories"]:
+            earns = "✅ YES" if cat["earns_cost"] else "❌ NO"
+            print(f"  {cat['category']:<20} | Score: {cat['pipeline_score_mean']:.2f} (pipeline) vs {cat['baseline_score_mean']:.2f} (baseline) | Lift: {cat['raw_lift']:.2f} | Cost-Adjusted Lift: {cat['cost_adjusted_lift']:.3f} | Earns Cost? {earns}")
+    except Exception as error:
+        print(f"\nBenchmark failed: {error}")
+
+
 def main():
 
     show_banner()
@@ -622,6 +641,10 @@ def main():
             tool_agent_interface()
 
         elif choice == "22":
+
+            run_lift_benchmark_interface()
+
+        elif choice == "23":
 
             print(
                 "\nExiting system.\n"

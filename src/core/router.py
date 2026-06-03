@@ -1,3 +1,4 @@
+import time
 from core.providers.registry import build_registry
 from core.complexity import score_complexity, classify, LOW, HIGH
 from core.escalation import record_escalation
@@ -10,6 +11,31 @@ CANNED_FALLBACK = (
     "[orchestrator] All providers are currently unavailable. "
     "Please retry shortly."
 )
+
+
+class TelemetryAccumulator:
+    def __init__(self):
+        self.active = False
+        self.calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.latency = 0.0
+
+    def reset(self):
+        self.calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.latency = 0.0
+
+    def record_call(self, prompt, completion, latency_s):
+        if not self.active:
+            return
+        self.calls += 1
+        p_tokens = int(len(prompt.split()) * 1.33) if prompt else 0
+        c_tokens = int(len(completion.split()) * 1.33) if completion else 0
+        self.prompt_tokens += p_tokens
+        self.completion_tokens += c_tokens
+        self.latency += latency_s
 
 
 class ProviderRouter:
@@ -27,6 +53,7 @@ class ProviderRouter:
 
     def __init__(self, providers=None):
         self.providers = providers if providers is not None else build_registry()
+        self.telemetry = TelemetryAccumulator()
 
     def _ordered(self, bar, sensitive):
         local = sorted([m for m in self.providers if m.local], key=lambda m: m.tier)
@@ -71,11 +98,17 @@ class ProviderRouter:
                 continue
 
             try:
+                t0 = time.time()
                 output = managed.provider.generate(
                     prompt, fmt=fmt, max_tokens=max_tokens
                 )
+                t1 = time.time()
                 managed.breaker.record_success()
                 log.debug("served by %s (bar=%s)", managed.name, bar)
+                
+                # Record telemetry
+                self.telemetry.record_call(prompt, output, t1 - t0)
+                
                 return output
 
             except Exception as error:

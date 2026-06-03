@@ -15,6 +15,7 @@ SUITES = [
     "test_verification.py",
     "test_tools.py",
     "test_feedback.py",
+    "test_lift_benchmark.py",
 ]
 
 
