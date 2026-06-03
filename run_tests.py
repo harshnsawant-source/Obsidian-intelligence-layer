@@ -12,6 +12,7 @@ SUITES = [
     "test_provider_router.py",
     "test_phase2.py",
     "test_verification.py",
+    "test_tools.py",
 ]
 
 
