@@ -6,14 +6,18 @@ from core.router import ProviderRouter
 _router = ProviderRouter()
 
 
-def query_llm(prompt, fmt=None, max_tokens=8000, sensitive=False):
+def query_llm(prompt, fmt=None, max_tokens=8000, sensitive=False,
+              prefer_cloud=False):
 
     # fmt="json" forces structured output; sensitive=True keeps the request on
-    # local models only (privacy). Always returns a string (never raises).
+    # local models only (privacy); prefer_cloud=True routes a low-complexity
+    # call cloud-first for quality (local stays as the failover floor, and
+    # sensitive still wins). Always returns a string (never raises).
 
     return _router.generate(
         prompt,
         fmt=fmt,
         max_tokens=max_tokens,
         sensitive=sensitive,
+        prefer_cloud=prefer_cloud,
     )

@@ -51,6 +51,22 @@ cloud2, local2 = mk("cloud", 1, False), mk("local", 4, True)
 check("route: trivial -> local first (preserve cloud quota)",
       ProviderRouter([cloud2, local2]).generate(TRIVIAL) == "OUT[local]")
 
+# --- prefer_cloud: low-complexity opts into cloud-first, local still floor ---
+cloudP, localP = mk("cloud", 1, False), mk("local", 4, True)
+check("prefer_cloud: trivial routes cloud-first",
+      ProviderRouter([cloudP, localP]).generate(TRIVIAL, prefer_cloud=True) == "OUT[cloud]")
+
+cfp, lop = mk("cloud", 1, False, mode="fail"), mk("local", 4, True)
+check("prefer_cloud: still falls over to local floor",
+      ProviderRouter([cfp, lop]).generate(TRIVIAL, prefer_cloud=True) == "OUT[local]"
+      and cfp.provider.calls == 1)
+
+# privacy outranks prefer_cloud: a sensitive call stays local, cloud untouched
+cps, lps = mk("cloud", 1, False), mk("local", 4, True)
+out = ProviderRouter([cps, lps]).generate(TRIVIAL, prefer_cloud=True, sensitive=True)
+check("prefer_cloud: sensitive still pins local (privacy wins)",
+      out == "OUT[local]" and cps.provider.calls == 0)
+
 # --- privacy: sensitive stays local even when complex ---
 cloud3, local3 = mk("cloud", 1, False), mk("local", 4, True)
 out = ProviderRouter([cloud3, local3]).generate(COMPLEX, sensitive=True)

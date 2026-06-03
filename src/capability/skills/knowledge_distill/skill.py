@@ -45,7 +45,10 @@ def _distill_learning(task, outcome):
     )
 
     try:
-        summary = query_llm(prompt, max_tokens=500)
+        # Distillation is short (scores low complexity) but quality matters, and
+        # the local thinking model is unreliable for it — prefer the cloud model,
+        # with local still the failover floor.
+        summary = query_llm(prompt, max_tokens=500, prefer_cloud=True)
     except Exception:
         summary = ""
 

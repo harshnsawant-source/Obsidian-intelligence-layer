@@ -42,7 +42,8 @@ class ProviderRouter:
         return score, classify(score)
 
     def generate(self, prompt, fmt=None, max_tokens=8000,
-                 sensitive=False, history=None, expects_code=False):
+                 sensitive=False, history=None, expects_code=False,
+                 prefer_cloud=False):
 
         score, bar = self.assess(prompt, history, expects_code)
 
@@ -53,7 +54,18 @@ class ProviderRouter:
             )
             record_escalation(prompt, score)
 
-        for managed in self._ordered(bar, sensitive):
+        order = self._ordered(bar, sensitive)
+
+        # prefer_cloud lets a caller opt a low-complexity task into cloud-first
+        # for quality (e.g. distillation summaries), while keeping local as the
+        # failover floor. Privacy still wins: a sensitive run is local-only and
+        # is never reordered onto the cloud.
+        if prefer_cloud and not sensitive:
+            cloud = [m for m in order if not m.local]
+            local = [m for m in order if m.local]
+            order = cloud + local
+
+        for managed in order:
 
             if not managed.breaker.allow():
                 continue
