@@ -110,5 +110,113 @@ check("run: returns final synthesis", outcome["final"] == "FINAL_SYNTHESIS")
 check("run: plan distilled into vault", len(distill_calls) == 1 and
       distill_calls[0].startswith("[plan]"))
 
+# ===================== Phase 4: sequential planner =====================
+
+from core.execution_context import SharedExecutionContext
+from core.planner import PlanExecutor
+import agents.planner_agent as pa
+from agents.planner_agent import PlannerAgent
+
+# PlanExecutor (in pl) uses pl.route_agent (already stubbed above). PlannerAgent
+# resolves route_agent + query_llm from its own module namespace.
+pa.route_agent = lambda task: "operations-agent"
+
+
+# Test 8: SharedExecutionContext shape — Phase-5 slots reserved + empty
+sec = SharedExecutionContext("ship feature")
+check("context: goal set", sec.goal == "ship feature")
+check("context: outputs starts empty", sec.outputs == [])
+check("context: phase-5 slots present and empty",
+      sec.completed_steps == [] and sec.findings == []
+      and sec.decisions == [] and sec.artifacts == {})
+sec.record_output("research-agent", "do research", "R")
+check("context: record_output populates outputs",
+      len(sec.outputs) == 1 and sec.outputs[0]["output"] == "R")
+check("context: record_output tracks completed_steps",
+      sec.completed_steps[0]["agent"] == "research-agent")
+check("context: render includes prior output + goal",
+      "R" in sec.render() and "ship feature" in sec.render())
+check("context: empty render before any output",
+      SharedExecutionContext("g").render() == "")
+
+
+# Test 9: PlanExecutor runs sequentially, threads context, feeds prior forward
+fm3 = FakeManager()
+plan = [
+    {"task": "research the market", "agent": "research-agent"},
+    {"task": "design the build", "agent": "development-agent"},
+]
+seen = []
+ctx = PlanExecutor(manager=fm3).run(
+    "launch", plan,
+    progress_callback=lambda i, n, a, t: seen.append((i, a)))
+order = [name for name, _ in fm3.calls]
+check("executor: sequential order preserved",
+      order == ["research-agent", "development-agent"])
+check("executor: returns context with one output per step", len(ctx.outputs) == 2)
+check("executor: completed_steps tracked", len(ctx.completed_steps) == 2)
+dev_task = [t for n, t in fm3.calls if n == "development-agent"][0]
+check("executor: prior result fed forward into later subtask",
+      "OUTPUT[research-agent]" in dev_task
+      and "shared execution context" in dev_task)
+research_task = [t for n, t in fm3.calls if n == "research-agent"][0]
+check("executor: first subtask carries no prior context",
+      "shared execution context" not in research_task)
+check("executor: progress callback fired per step",
+      seen == [(1, "research-agent"), (2, "development-agent")])
+
+
+# Test 10: PlanExecutor validates agent names -> route_agent fallback
+fm4 = FakeManager()
+PlanExecutor(manager=fm4).run("g", [{"task": "x", "agent": "wizard-agent"}])
+check("executor: invalid agent replaced via route_agent",
+      fm4.calls[0][0] == "operations-agent")
+
+
+# Test 11: PlannerAgent.decompose parses flat [{task, agent}] + validates
+pa.query_llm = lambda prompt, *a, **k: (
+    '[{"task":"research","agent":"research-agent"},'
+    '{"task":"build","agent":"development-agent"}]')
+dsteps = PlannerAgent(manager=FakeManager()).decompose("launch")
+check("planner-agent: decompose parses flat 2-step list", len(dsteps) == 2)
+check("planner-agent: decompose is flat (no depends_on)",
+      all(set(s.keys()) == {"task", "agent"} for s in dsteps))
+check("planner-agent: decompose agents valid + ordered",
+      [s["agent"] for s in dsteps] == ["research-agent", "development-agent"])
+
+
+# Test 12: decompose invalid agent replaced; unparseable -> single-step fallback
+pa.query_llm = lambda prompt, *a, **k: '[{"task":"x","agent":"nope-agent"}]'
+check("planner-agent: invalid agent replaced",
+      PlannerAgent(manager=FakeManager()).decompose("x")[0]["agent"]
+      == "operations-agent")
+pa.query_llm = lambda prompt, *a, **k: "definitely not json"
+fbk = PlannerAgent(manager=FakeManager()).decompose("do a thing")
+check("planner-agent: unparseable -> single-step fallback",
+      len(fbk) == 1 and fbk[0]["agent"] == "operations-agent")
+
+
+# Test 13: PlannerAgent.execute decomposes, runs sequentially, merges report
+prog = []
+
+
+def planner_query(prompt, *a, **k):
+    if "Final combined report" in prompt:
+        return "COMBINED_REPORT"
+    return ('[{"task":"research","agent":"research-agent"},'
+            '{"task":"build","agent":"development-agent"}]')
+
+
+pa.query_llm = planner_query
+fm5 = FakeManager()
+pe_agent = PlannerAgent(manager=fm5)
+pe_agent.progress_callback = lambda i, n, ag, t: prog.append(i)
+report = pe_agent.execute("launch product")
+check("planner-agent: execute returns merged combined report",
+      report == "COMBINED_REPORT")
+check("planner-agent: execute dispatched every subtask", len(fm5.calls) == 2)
+check("planner-agent: progress shown for each step", prog == [1, 2])
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

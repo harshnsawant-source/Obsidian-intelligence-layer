@@ -10,6 +10,8 @@ from core.log import get_logger
 from capability.core.runtime_context import RuntimeContext
 from capability.core.skill_loader import load_skill
 
+from core.execution_context import SharedExecutionContext
+
 
 log = get_logger("planner")
 
@@ -314,3 +316,67 @@ Revise the answer to fix them:"""
         except Exception as error:
 
             log.warning("plan distillation failed: %s", error)
+
+
+class PlanExecutor:
+
+    # Runs a FLAT, ordered [{task, agent}] plan SEQUENTIALLY (Phase 4), threading
+    # a SharedExecutionContext through the steps. Each subtask is dispatched via
+    # the manager — i.e. it runs the agent's full run() pipeline, so every
+    # subtask result auto-distills into the vault with no extra work here. The
+    # output is recorded into the context and fed forward (rendered into the next
+    # subtask's prompt) so later steps build on earlier ones.
+    #
+    # This complements the DAG-based Planner above; it does not replace it.
+
+    def __init__(self, manager=None):
+
+        self.manager = manager or AgentManager()
+
+    def run(self, goal, plan, progress_callback=None):
+
+        # Returns the SharedExecutionContext (its `outputs` hold every result).
+        # progress_callback(step_index, total, agent, task) is called BEFORE each
+        # dispatch so a UI can show live progress; None = silent.
+
+        ctx = SharedExecutionContext(goal)
+
+        total = len(plan)
+
+        for index, step in enumerate(plan, start=1):
+
+            task = str(step.get("task", "")).strip()
+
+            agent = step.get("agent")
+
+            # Validate against the live pool; fall back to keyword routing.
+            if agent not in self.manager.agents:
+                agent = route_agent(task)
+
+            if progress_callback:
+                progress_callback(index, total, agent, task)
+
+            framed = self._frame(task, ctx)
+
+            output = self.manager.dispatch(agent, framed)
+
+            ctx.record_output(agent, task, output)
+
+        return ctx
+
+    @staticmethod
+    def _frame(task, ctx):
+
+        # Subtask receives `task + shared_execution_context` (rendered as text,
+        # since agents take a string — the agent architecture is unchanged).
+        context_text = ctx.render()
+
+        if not context_text:
+            return task
+
+        return (
+            f"{task}\n\n"
+            f"--- shared execution context ---\n"
+            f"{context_text}\n"
+            f"--- end shared execution context ---"
+        )

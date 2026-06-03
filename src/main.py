@@ -327,19 +327,50 @@ def plan_and_execute_interface():
         "\nDescribe the goal to plan:\n\n"
     )
 
-    planner = Planner()
+    # Single planning area, two engines:
+    #   1. Sequential PlannerAgent (Phase 4) — flat plan, shared context, merged
+    #      report. The default.
+    #   2. Dependency-graph Planner — subtask DAG with topological ordering.
+    print("\nPlanning mode:")
+    print("  1. Sequential plan (PlannerAgent)  [default]")
+    print("  2. Dependency graph (advanced)")
 
-    outcome = planner.run(goal)
+    mode = input("\nSelect mode [1]: ").strip() or "1"
 
-    print("\n=== PLAN ===\n")
+    if mode == "2":
 
-    for step in outcome["steps"]:
-        deps = step["depends_on"] or "-"
-        print(f"  [{step['id']}] ({step['agent']}) {step['task']}  deps={deps}")
+        outcome = Planner().run(goal)
 
-    print("\n=== FINAL ANSWER ===\n")
+        print("\n=== PLAN (dependency graph) ===\n")
 
-    print(outcome["final"])
+        for step in outcome["steps"]:
+            deps = step["depends_on"] or "-"
+            print(f"  [{step['id']}] ({step['agent']}) {step['task']}  deps={deps}")
+
+        print("\n=== FINAL ANSWER ===\n")
+
+        print(outcome["final"])
+
+        return
+
+    # Sequential PlannerAgent (Phase 4).
+    from agents.planner_agent import PlannerAgent
+
+    def progress(index, total, agent, task):
+        print(f"\n[step {index}/{total}] {agent}")
+        print(f"   -> {task}")
+
+    planner_agent = PlannerAgent()
+
+    planner_agent.progress_callback = progress
+
+    print("\n=== PLANNING & EXECUTING (sequential) ===")
+
+    report = planner_agent.run(goal)
+
+    print("\n=== FINAL COMBINED REPORT ===\n")
+
+    print(report)
 
 
 def ingest_document_interface():
