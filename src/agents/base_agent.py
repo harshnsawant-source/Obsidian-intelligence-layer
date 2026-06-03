@@ -6,6 +6,7 @@ from capability.core.skill_loader import load_skill
 from core.llm_engine import query_llm
 from core.memory_writer import save_memory
 from core.context_builder import build_context
+from core.verification import refine
 
 
 class BaseAgent:
@@ -20,6 +21,14 @@ class BaseAgent:
     # Subclasses set sensitive = True to pin their LLM calls to LOCAL models
     # only (privacy) — used by agents that reason over personal memory/notes.
     sensitive = False
+
+    # Subclasses set verifiers = [Verifier(), ...] to opt INTO the
+    # generate -> verify -> correct loop. Empty (the default) means a single
+    # LLM call and no behavior change — verification is strictly additive.
+    verifiers = []
+
+    # Max generate attempts when verifiers are present (1 generate + retries).
+    max_verify_tries = 2
 
     def __init__(
         self,
@@ -36,6 +45,10 @@ class BaseAgent:
         # Set by AgentManager so an agent can reach its siblings. None when
         # an agent runs standalone, in which case delegation is a no-op.
         self.broker = None
+
+        # Verdict from the most recent query_agent run; None when no verifier
+        # ran. run() reads this to gate distillation.
+        self.last_verdict = None
 
     def delegate(self, agent_name, task):
 
@@ -89,7 +102,7 @@ class BaseAgent:
                 f"Input from other agents:\n\n{extra_context}\n\n"
             )
 
-        prompt = f"""
+        base_prompt = f"""
 You are a {role}.
 
 {instructions}
@@ -105,7 +118,34 @@ Task:
 Provide a complete, actionable response.
 """
 
-        result = query_llm(prompt, sensitive=self.sensitive)
+        # Generation closure: re-issues the prompt with the verifier's feedback
+        # appended on a correction pass. With no verifiers this is called once.
+        def generate(feedback, previous):
+            prompt = base_prompt
+            if feedback:
+                prompt += f"""
+
+Your previous attempt did not pass verification:
+
+--- previous attempt ---
+{previous}
+--- end ---
+
+Fix these specific problems and return a corrected response:
+{feedback}
+"""
+            return query_llm(prompt, sensitive=self.sensitive)
+
+        outcome = refine(
+            generate,
+            task,
+            verifiers=self.verifiers,
+            max_tries=self.max_verify_tries,
+        )
+
+        self.last_verdict = outcome.verdict
+
+        result = outcome.output
 
         output_name = output_name or f"{self.name}_output"
 
@@ -155,8 +195,16 @@ Provide a complete, actionable response.
 
         result = self.execute(task)
 
+        # Gate the learning loop on verification: only distill output that did
+        # not FAIL a verifier. last_verdict is None when no verifier ran (the
+        # default), which preserves the original always-distill behavior. A
+        # failed verdict keeps bad output out of the vault, stopping errors
+        # from compounding through retrieval. See VERIFICATION.md section 5.2.
+        verified = self.last_verdict is None or self.last_verdict.ok
+
         if (
             self.distillable
+            and verified
             and isinstance(result, str)
             and result.strip()
         ):
@@ -173,6 +221,13 @@ Provide a complete, actionable response.
                     "task": task,
                     "outcome": result
                 }
+            )
+
+        elif self.distillable and not verified:
+
+            print(
+                f"\n[{self.name}] skipped distillation - output failed "
+                f"verification (not added to the knowledge vault)."
             )
 
         return result

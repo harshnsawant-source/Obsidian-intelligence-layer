@@ -3,6 +3,8 @@ import json
 from core.llm_engine import query_llm
 from core.agent_engine import route_agent
 from core.agent_manager import AgentManager
+from core.verification import refine
+from core.verifiers import CriticVerifier
 from core.log import get_logger
 
 from capability.core.runtime_context import RuntimeContext
@@ -21,9 +23,14 @@ class Planner:
 
     MAX_STEPS = 6
 
-    def __init__(self, manager=None):
+    def __init__(self, manager=None, verify=False):
 
         self.manager = manager or AgentManager()
+
+        # verify=True spends a second model pass (a critic) on the synthesis —
+        # the highest-value, lowest-frequency call. Default off preserves the
+        # original single-pass behavior. See VERIFICATION.md section 5.3.
+        self.verify = verify
 
     # ---- decomposition -------------------------------------------------
 
@@ -238,7 +245,7 @@ Goal:
             for r in results
         )
 
-        prompt = f"""Consolidate the subtask results into a single coherent answer to the goal.
+        base_prompt = f"""Consolidate the subtask results into a single coherent answer to the goal.
 
 Goal:
 {goal}
@@ -248,7 +255,28 @@ Subtask results:
 
 Final consolidated answer:"""
 
-        return query_llm(prompt)
+        if not self.verify:
+            return query_llm(base_prompt)
+
+        def generate(feedback, previous):
+            prompt = base_prompt
+            if feedback:
+                prompt += f"""
+
+A reviewer found problems with your previous answer:
+{feedback}
+
+Revise the answer to fix them:"""
+            return query_llm(prompt)
+
+        outcome = refine(
+            generate,
+            goal,
+            verifiers=[CriticVerifier()],
+            max_tries=2,
+        )
+
+        return outcome.output
 
     # ---- orchestration -------------------------------------------------
 
