@@ -12,32 +12,46 @@ from datetime import datetime
 from core.llm_engine import query_llm
 from core.curator import ERROR_MARKERS
 
+# Sentinels the model adapter emits when a (reasoning) model produced no usable
+# final answer — these must never be stored as a "learning".
+_BAD_OUTPUTS = ("[NO FINAL ANSWER GENERATED]", "No response generated.")
+
 
 def _looks_like_error(text):
     return any(marker in text for marker in ERROR_MARKERS)
 
 
+def _unusable(summary):
+    # True if the LLM gave us nothing we should store as a lesson.
+    if not summary:
+        return True
+    if _looks_like_error(summary):
+        return True
+    return any(summary.startswith(s) or s in summary for s in _BAD_OUTPUTS)
+
+
 def _distill_learning(task, outcome):
 
     # Turn the raw outcome into a concise, reusable lesson. Falls back to a
-    # truncated outcome if the model is unavailable or returns the canned
-    # fallback — distillation must never block on the LLM.
+    # trimmed outcome if the model is unavailable, errors, or returns no usable
+    # answer (e.g. a thinking model that ran out of tokens mid-reasoning) —
+    # distillation must never block on, or be polluted by, the LLM.
 
     prompt = (
         "Distill the key, reusable lesson from this task outcome into 1-3 "
-        "concise sentences. State what works / what to do next time. No "
-        "preamble.\n\n"
+        "concise sentences. State what works / what to do next time. Reply with "
+        "ONLY the lesson, no preamble, no reasoning.\n\n"
         f"Task:\n{task}\n\nOutcome:\n{outcome}\n\nLesson:"
     )
 
     try:
-        summary = query_llm(prompt, max_tokens=300)
+        summary = query_llm(prompt, max_tokens=500)
     except Exception:
         summary = ""
 
     summary = (summary or "").strip()
 
-    if not summary or _looks_like_error(summary):
+    if _unusable(summary):
         # Graceful fallback: a trimmed version of the outcome itself.
         return outcome.strip()[:500]
 

@@ -237,6 +237,16 @@ ctx = FakeCtx()
 r = distill.execute(ctx, {"task": "x", "outcome": "[orchestrator] All providers are unavailable"})
 check("distill: canned fallback skipped", bool(r.get("skipped")))
 
+# LLM returns the "no final answer" sentinel (thinking model out of tokens) ->
+# learning must fall back to the trimmed outcome, never store the sentinel.
+ctx = FakeCtx()
+distill.query_llm = lambda *a, **k: "[NO FINAL ANSWER GENERATED]\n\nThinking Process:\n1. analyze..."
+OUT = "A genuine outcome worth keeping as the fallback learning text."
+r = distill.execute(ctx, {"task": "sentinel case", "outcome": OUT})
+check("distill: sentinel output falls back to outcome",
+      r["learning"] == OUT and "NO FINAL ANSWER" not in r["learning"])
+distill.query_llm = lambda *a, **k: "Concise distilled lesson."  # restore stub
+
 # normal outcome -> saved, learning is the distilled summary (not verbatim)
 ctx = FakeCtx()
 r = distill.execute(ctx, {"task": "Build a thing", "outcome": "It works and here is a long enough outcome to matter."})
