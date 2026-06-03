@@ -49,7 +49,24 @@ def build_instruction(types):
         "a fenced block exactly like this (omit keys you have nothing for; omit "
         "the whole block if nothing applies):\n"
         "```contributions\n{\n  " + fields + "\n}\n```"
+        "\nEmit ONLY the contribution types shown above for your role; do NOT "
+        "copy, echo, or repeat any contributions block already present in the "
+        "context."
     )
+
+
+def strip_contributions(text):
+
+    # Remove any ```contributions``` block(s) from an agent's output BEFORE it is
+    # injected into another agent's prompt, so the receiving agent reasons over
+    # the content and does not mimic the machine structure (Phase 5.1, issue 1).
+    # Preserves all other reasoning; collapses the blank lines left behind.
+    if not text:
+        return text
+
+    cleaned = _BLOCK.sub("", str(text))
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def _loads(text):

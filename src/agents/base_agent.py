@@ -7,7 +7,7 @@ from core.llm_engine import query_llm
 from core.memory_writer import save_memory
 from core.context_builder import build_context
 from core.verification import refine
-from core.contributions import build_instruction
+from core.contributions import build_instruction, strip_contributions
 
 
 class BaseAgent:
@@ -65,7 +65,12 @@ class BaseAgent:
         if not self.broker or agent_name == self.name:
             return ""
 
-        return self.broker.dispatch(agent_name, task)
+        # Strip any structured contribution block before the delegated output is
+        # injected into THIS agent's prompt, so the receiver reasons over the
+        # content and doesn't mimic the machine format (Phase 5.1, issue 1).
+        # Top-level parsing is unaffected: the executor parses the agent's own
+        # output on the separate manager.dispatch path.
+        return strip_contributions(self.broker.dispatch(agent_name, task))
 
     def consume(self, agent_names, task):
 

@@ -69,7 +69,9 @@ class SharedExecutionContext:
 
         # --- internal: deterministic ids + dedup index ---
         self._counters = {"finding": 0, "decision": 0, "risk": 0, "assumption": 0}
-        self._finding_keys = {}    # norm(finding text) -> finding id  (#3)
+        self._finding_keys = {}        # norm(finding text) -> finding id  (#3)
+        self._risk_keys = {}           # norm(risk text) -> risk id        (5.1)
+        self._assumption_keys = {}     # norm(assumption text) -> id       (5.1)
 
     # ---- ids / time -------------------------------------------------
 
@@ -180,6 +182,27 @@ class SharedExecutionContext:
         if sev not in _SEVERITY_RANK:
             sev = "medium"
 
+        key = _norm(text)
+
+        # Exact-match dedup (5.1): on a duplicate, keep the HIGHEST severity,
+        # bump support_count, accumulate unique agents in reported_by (consensus
+        # signal for later phases), and fill a missing mitigation / link.
+        existing_id = self._risk_keys.get(key)
+
+        if existing_id is not None:
+            for rec in self.risks:
+                if rec["id"] == existing_id:
+                    rec["support_count"] = rec.get("support_count", 1) + 1
+                    if _SEVERITY_RANK[sev] > _SEVERITY_RANK.get(rec["severity"], 2):
+                        rec["severity"] = sev
+                    if mitigation and not rec.get("mitigation"):
+                        rec["mitigation"] = str(mitigation)
+                    if assumption_id and not rec.get("assumption_id"):
+                        rec["assumption_id"] = assumption_id
+                    if agent and agent not in rec["reported_by"]:
+                        rec["reported_by"].append(agent)
+                    return existing_id
+
         rid = self._next_id("risk")
         self.risks.append({
             "id": rid,
@@ -188,8 +211,11 @@ class SharedExecutionContext:
             "mitigation": str(mitigation or ""),
             "assumption_id": assumption_id,   # optional soft-link (#6)
             "agent": agent,
+            "reported_by": [agent] if agent else [],
+            "support_count": 1,
             "ts": self._now(),
         })
+        self._risk_keys[key] = rid
         return rid
 
     def add_assumption(self, assumption, confidence=None, agent=None):
@@ -199,14 +225,34 @@ class SharedExecutionContext:
         if not text:
             return None
 
+        conf = _coerce_conf(confidence)
+        key = _norm(text)
+
+        # Exact-match dedup (5.1): keep the HIGHEST confidence, bump
+        # support_count, accumulate unique agents in reported_by.
+        existing_id = self._assumption_keys.get(key)
+
+        if existing_id is not None:
+            for rec in self.assumptions:
+                if rec["id"] == existing_id:
+                    rec["support_count"] = rec.get("support_count", 1) + 1
+                    if conf is not None:
+                        rec["confidence"] = max(rec.get("confidence") or 0.0, conf)
+                    if agent and agent not in rec["reported_by"]:
+                        rec["reported_by"].append(agent)
+                    return existing_id
+
         aid = self._next_id("assumption")
         self.assumptions.append({
             "id": aid,
             "assumption": text,
-            "confidence": _coerce_conf(confidence),
+            "confidence": conf,
             "agent": agent,
+            "reported_by": [agent] if agent else [],
+            "support_count": 1,
             "ts": self._now(),
         })
+        self._assumption_keys[key] = aid
         return aid
 
     def merge_contributions(self, contribs, agent=None):
@@ -424,6 +470,8 @@ class SharedExecutionContext:
             "assumptions": self.assumptions,
             "_counters": self._counters,
             "_finding_keys": self._finding_keys,
+            "_risk_keys": self._risk_keys,
+            "_assumption_keys": self._assumption_keys,
         }
 
     @classmethod
@@ -438,4 +486,6 @@ class SharedExecutionContext:
         ctx.assumptions = list(data.get("assumptions", []))
         ctx._counters = dict(data.get("_counters", ctx._counters))
         ctx._finding_keys = dict(data.get("_finding_keys", {}))
+        ctx._risk_keys = dict(data.get("_risk_keys", {}))
+        ctx._assumption_keys = dict(data.get("_assumption_keys", {}))
         return ctx

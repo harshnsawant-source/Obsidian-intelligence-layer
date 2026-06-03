@@ -207,5 +207,104 @@ check("compat: no contributions -> empty structured buckets",
 check("compat: outputs still recorded", len(ex2.outputs) == 1)
 
 
+# ===================== Phase 5.1: reasoning hardening =====================
+
+from core.contributions import strip_contributions
+from agents.base_agent import BaseAgent
+
+
+# ---- strip_contributions ----
+FENCE = "`" * 3
+blocky = (
+    "Reasoning here.\n"
+    + FENCE + "contributions\n"
+    + '{"findings": [{"finding": "x"}]}\n'
+    + FENCE + "\nMore reasoning."
+)
+stripped = strip_contributions(blocky)
+check("strip: block removed",
+      "```contributions" not in stripped and '"finding"' not in stripped)
+check("strip: reasoning preserved",
+      "Reasoning here." in stripped and "More reasoning." in stripped)
+check("strip: no block -> unchanged", strip_contributions("just text") == "just text")
+check("strip: empty safe", strip_contributions("") == "")
+
+
+# ---- delegate() strips centrally ----
+class FakeBroker:
+    def dispatch(self, name, task):
+        return (
+            "Delegated reasoning.\n"
+            + FENCE + "contributions\n"
+            + '{"findings": [{"finding": "y"}]}\n'
+            + FENCE
+        )
+
+
+ba = BaseAgent("parent-agent", "spec")
+ba.broker = FakeBroker()
+delegated = ba.delegate("child-agent", "do x")
+check("delegate: contribution block stripped",
+      "```contributions" not in delegated and "Delegated reasoning." in delegated)
+check("delegate: no broker -> empty", BaseAgent("p", "s").delegate("c", "t") == "")
+
+
+# ---- instruction guards against copying ----
+check("instruction: guards against copying context blocks",
+      "only" in build_instruction(["decisions"]).lower()
+      and "copy" in build_instruction(["decisions"]).lower())
+
+
+# ---- risk dedup + reported_by ----
+rc = SharedExecutionContext("g")
+rc.add_risk("Privacy concern", severity="low", mitigation="", agent="research-agent")
+rc.add_risk("Privacy concern", severity="high", mitigation="encrypt", agent="development-agent")
+check("risk dedup: single record", len(rc.risks) == 1)
+check("risk dedup: support_count incremented", rc.risks[0]["support_count"] == 2)
+check("risk dedup: keeps highest severity", rc.risks[0]["severity"] == "high")
+check("risk dedup: fills missing mitigation", rc.risks[0]["mitigation"] == "encrypt")
+check("risk dedup: reported_by accumulates unique agents",
+      rc.risks[0]["reported_by"] == ["research-agent", "development-agent"])
+rc.add_risk("Privacy concern", agent="research-agent")   # duplicate agent
+check("risk dedup: reported_by stays unique, support still grows",
+      rc.risks[0]["reported_by"] == ["research-agent", "development-agent"]
+      and rc.risks[0]["support_count"] == 3)
+rc.add_risk("A different risk", agent="ops")
+check("risk dedup: distinct risk still added", len(rc.risks) == 2)
+
+
+# ---- assumption dedup + reported_by ----
+ac = SharedExecutionContext("g")
+ac.add_assumption("Mobile-first wins", confidence=0.6, agent="research-agent")
+ac.add_assumption("Mobile-first wins", confidence=0.9, agent="strategy-agent")
+check("assumption dedup: single record", len(ac.assumptions) == 1)
+check("assumption dedup: support_count incremented", ac.assumptions[0]["support_count"] == 2)
+check("assumption dedup: keeps highest confidence", ac.assumptions[0]["confidence"] == 0.9)
+check("assumption dedup: reported_by accumulates",
+      ac.assumptions[0]["reported_by"] == ["research-agent", "strategy-agent"])
+
+
+# ---- dedup via merge_contributions across two agents ----
+mc = SharedExecutionContext("g")
+dup = {"risks": [{"risk": "R", "severity": "medium"}],
+       "assumptions": [{"assumption": "A", "confidence": 0.5}]}
+mc.merge_contributions(dup, agent="research-agent")
+mc.merge_contributions(dup, agent="strategy-agent")
+check("merge dedup: risks collapsed",
+      len(mc.risks) == 1 and mc.risks[0]["support_count"] == 2)
+check("merge dedup: assumptions collapsed",
+      len(mc.assumptions) == 1 and mc.assumptions[0]["support_count"] == 2)
+check("merge dedup: reported_by spans both agents",
+      mc.risks[0]["reported_by"] == ["research-agent", "strategy-agent"])
+
+
+# ---- serialization carries the new dedup indexes ----
+rtc = SharedExecutionContext.from_dict(rc.to_dict())
+check("serialize: risk dedup index preserved", rtc._risk_keys == rc._risk_keys)
+rta = SharedExecutionContext.from_dict(ac.to_dict())
+check("serialize: assumption dedup index preserved",
+      rta._assumption_keys == ac._assumption_keys)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
