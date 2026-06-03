@@ -49,6 +49,15 @@ distillation skips error/empty outcomes, writes a real LLM-distilled lesson
 re-runs overwrite instead of duplicating; the curator (Phase 7) prunes/dedupes
 what slips through.
 
+The distillation summary is generated robustly: it **prefers the cloud model**
+for quality (via a `prefer_cloud` routing hint — short summaries score low and
+would otherwise route to the local *thinking* model, which is unreliable here),
+and **gracefully falls back** to a trimmed outcome whenever the model is down,
+errors, or returns no usable answer (e.g. a reasoning model that runs out of
+tokens mid-thought → the `[NO FINAL ANSWER GENERATED]` sentinel). It can never
+store junk or block on the LLM. Privacy still wins: `prefer_cloud` is ignored on
+`sensitive` runs, which stay local-only.
+
 ### Unified agent pipeline
 All agents share one pipeline in `BaseAgent.query_agent`
 (`build_context → LLM → save → return`). A new agent only needs a name +
@@ -82,6 +91,9 @@ single-step fallback on bad output, cycle-safe, capped at MAX_STEPS.
   recovery. Privacy/complexity-aware ordering, failover, local floor, canned
   final fallback (never raises). `llm_engine.query_llm` is a thin facade so all
   agents get routing + failover transparently.
+- **`prefer_cloud` hint:** a caller can opt a low-complexity call into
+  cloud-first ordering for quality (local stays the failover floor); `sensitive`
+  always overrides it and pins local. Used by distillation.
 - **Scope:** Ollama only (local + free cloud) — no external providers.
 
 ### Document RAG + privacy + escalation (Phase 2)
@@ -171,7 +183,7 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 
 ## 5. Testing
 
-`python run_tests.py` → **8 suites, 167 checks, all passing**:
+`python run_tests.py` → **8 suites, 171 checks, all passing**:
 - `test_semantic_memory.py` — indexing, incremental, ranking, paraphrase, cache, fallback
 - `test_a2a.py` — delegation, consumption, depth guard, distillation, no-broker safety
 - `test_planner.py` — decompose, fallback, ordering, dependency injection, cycle safety, synth, distill
@@ -202,6 +214,10 @@ VRAM; the heavy lifting runs free on remote GPUs via Ollama cloud.
 | `788b69a` | Phase 6: tool execution framework (permission-gated, ReAct loop) |
 | `3eb114b` | Phase 7: feedback / eval loop (measure + curate) |
 | `5db33ec` | Fix knowledge_distill at the source + apply vault cleanup |
+| `c3e50ef` | Refresh SUMMARY.md for Phases 6 & 7 |
+| `adb375a` | Add Run Tool Agent menu entry (#21) |
+| `e96858b` | Harden distillation against unusable LLM output |
+| `a601941` | Let distillation prefer cloud (prefer_cloud routing hint) |
 
 ---
 
@@ -226,4 +242,4 @@ memory is gated + self-cleaning.
 
 **Run it:** `cd src && python main.py` — Menu #14 execute agent, #15 plan a goal,
 #16 ingest a doc, #17 ask over docs, #18 escalation queue, **#19 run eval suite,
-#20 curate vault**. `OIL_LOG_LEVEL=DEBUG` for internals.
+#20 curate vault, #21 run tool agent**. `OIL_LOG_LEVEL=DEBUG` for internals.
