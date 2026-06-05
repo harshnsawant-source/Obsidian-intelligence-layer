@@ -193,5 +193,19 @@ check("calibration: mid-band kept (no selection bias)", verdicts["mid"] == "keep
 check("calibration: kept list correct", cal["kept"] == ["mid"])
 
 
+# Regression: run_calibration must work through the REAL isolated_vault path
+# (isolate=True). The earlier test used isolate=False and missed a NameError.
+_orig_A = arms.ARMS["A"]
+arms.ARMS["A"] = lambda task, pub: block("def f(x):\n    return x")
+try:
+    tiny = [{"id": "t", "category": "x", "task": "t",
+             "public_tests": [], "hidden_tests": ["assert f(1) == 1"]}]
+    cal = lb.run_calibration(tiny, K=1, isolate=True, keep_vault=False)
+    check("calibration: isolate=True path runs (regression)",
+          isinstance(cal.get("kept"), list) and len(cal["cases"]) == 1)
+finally:
+    arms.ARMS["A"] = _orig_A
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

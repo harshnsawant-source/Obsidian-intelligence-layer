@@ -548,6 +548,7 @@ def run_calibration(cases, K=5, ceiling=0.9, floor=0.1, max_std=0.35,
     # high-variance cases (no mid-band selection -> no regression-to-mean bias).
     # These trials are NOT reused by run_v2 (the deciding run draws fresh trials).
     from core.eval.arms import ARMS
+    from core.eval.benchmark_vault import isolated_vault
 
     vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
     rows = []
@@ -593,6 +594,7 @@ def run_v2(cases, K=8, arms=("A", "B", "C"), k_sig=2.0, cost_axis="wall",
     # outage cannot systematically bias one arm. Fresh trials (never the
     # calibration ones).
     from core.eval.arms import ARMS
+    from core.eval.benchmark_vault import isolated_vault
 
     rng = random.Random(seed)
     results = {}
