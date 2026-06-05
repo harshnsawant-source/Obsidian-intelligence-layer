@@ -3,6 +3,7 @@ from core.providers.registry import build_registry
 from core.complexity import score_complexity, classify, LOW, HIGH
 from core.escalation import record_escalation
 from core.trace import TraceLog
+from core.output_health import is_degenerate
 from core.log import get_logger
 
 
@@ -119,11 +120,38 @@ class ProviderRouter:
                     prompt, fmt=fmt, max_tokens=max_tokens
                 )
                 t1 = time.time()
+
+                # The call happened (cost real time/tokens) — record it before
+                # judging the output quality.
+                self.telemetry.record_call(prompt, output, t1 - t0)
+
+                # CU5: a provider can "succeed" yet return unusable output (a
+                # repetition loop, no-final-answer, or empty). Treat that as a
+                # failure and fail over rather than returning garbage that would
+                # poison downstream steps.
+                degenerate, reason = is_degenerate(output)
+                if degenerate:
+                    managed.breaker.record_failure()
+                    log.warning(
+                        "provider %s returned degenerate output: %s",
+                        managed.name, reason,
+                    )
+                    self.trace.record(
+                        event="provider_failure",
+                        provider=managed.name,
+                        bar=bar,
+                        prefer_cloud=bool(prefer_cloud),
+                        expects_code=bool(expects_code),
+                        sensitive=bool(sensitive),
+                        severe=False,
+                        latency=round(t1 - t0, 3),
+                        output_kind="degenerate",
+                        reason=reason,
+                    )
+                    continue
+
                 managed.breaker.record_success()
                 log.debug("served by %s (bar=%s)", managed.name, bar)
-
-                # Record telemetry
-                self.telemetry.record_call(prompt, output, t1 - t0)
 
                 self.trace.record(
                     event="generate",

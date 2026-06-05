@@ -288,5 +288,67 @@ check("CU2: local token cap wired from config (1500)",
 check("CU2: cloud left uncapped", caps.get("ollama-cloud-coder") is None)
 
 
+# --- CU5: degenerate-output detection --------------------------------------
+from core.output_health import is_degenerate
+
+check("CU5: empty is degenerate", is_degenerate("")[0] is True)
+check("CU5: whitespace is degenerate", is_degenerate("   \n  ")[0] is True)
+check("CU5: no-final-answer sentinel is degenerate",
+      is_degenerate("[NO FINAL ANSWER GENERATED]\n\nThinking...")[0] is True)
+
+loop_text = "\n".join(["This is a repeated reasoning line that loops."] * 30)
+deg, why = is_degenerate(loop_text)
+check("CU5: repeated-line loop is degenerate", deg is True and "repeated_line" in why)
+
+healthy = (
+    "Here is a complete answer to the question.\n"
+    "It has several distinct, substantive lines of real content.\n"
+    "None of them repeat, so it should be considered healthy."
+)
+check("CU5: normal prose is healthy", is_degenerate(healthy)[0] is False)
+
+code = (
+    "def dedupe(items):\n"
+    "    seen = set()\n"
+    "    result = []\n"
+    "    for item in items:\n"
+    "        if item not in seen:\n"
+    "            seen.add(item)\n"
+    "            result.append(item)\n"
+    "    return result\n"
+)
+check("CU5: normal code is healthy", is_degenerate(code)[0] is False)
+
+
+class _Returner:
+    def __init__(self, name, tier, local, text):
+        self.name = name
+        self.tier = tier
+        self.local = local
+        self.cost = 0.0
+        self.calls = 0
+        self.text = text
+
+    def generate(self, prompt, fmt=None, max_tokens=8000):
+        self.calls += 1
+        return self.text
+
+
+# Degenerate cloud output -> fail over to a healthy local answer.
+dcloud = ManagedProvider(_Returner("cloud", 1, False, "[NO FINAL ANSWER GENERATED]"))
+hlocal = ManagedProvider(_Returner("local", 4, True, healthy))
+rdeg = ProviderRouter([dcloud, hlocal])
+out = rdeg.generate(COMPLEX)
+check("CU5: degenerate output triggers failover", out == healthy)
+deg_rec = [r for r in rdeg.trace.recent(10) if r.get("output_kind") == "degenerate"]
+check("CU5: degenerate failover recorded in trace", len(deg_rec) == 1)
+
+# Both providers degenerate -> canned fallback (no garbage returned).
+dc2 = ManagedProvider(_Returner("cloud", 1, False, loop_text))
+dl2 = ManagedProvider(_Returner("local", 4, True, "[NO FINAL ANSWER GENERATED]"))
+check("CU5: all-degenerate -> canned fallback",
+      ProviderRouter([dc2, dl2]).generate(COMPLEX) == CANNED_FALLBACK)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
