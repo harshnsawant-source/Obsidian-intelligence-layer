@@ -548,6 +548,17 @@ def main():
 
     show_banner()
 
+    # K-A: keep the knowledge vault clean automatically (prune error/empty notes
+    # + collapse duplicates) so retrieval quality does not decay over time.
+    # Best-effort, scoped to the agent-distillation vault; never blocks startup.
+    try:
+        from core.curator import auto_curate
+        result = auto_curate()
+        if result.get("deleted"):
+            print(f"\n[curator] cleaned {result['deleted']} low-value/duplicate vault notes.")
+    except Exception:
+        pass
+
     while True:
 
         show_menu()

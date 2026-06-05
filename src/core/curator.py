@@ -182,6 +182,24 @@ def _add_near_dupes(plan, files, contents, already_dropped):
             grouped.update(cluster)
 
 
+def auto_curate(vault=None, near_dupes=True):
+
+    # Non-interactive curation for the AGENT-DISTILLATION vault: scan + apply in
+    # one call. Safe to run on startup. IMPORTANT: only ever point this at the
+    # distillation/scratch vault (KNOWLEDGE_VAULT) — never at the user's real
+    # notes; pruning + near-dup removal is acceptable for agent-generated lessons
+    # but would be destructive for hand-written notes. Best-effort: never raises.
+    try:
+        plan = scan_vault(vault, near_dupes=near_dupes)
+        deleted = apply_plan(plan, vault)
+        if deleted:
+            log.info("auto-curate removed %d notes", len(deleted))
+        return {"deleted": len(deleted), "plan": plan}
+    except Exception as error:
+        log.warning("auto-curate skipped: %s", error)
+        return {"deleted": 0, "plan": None}
+
+
 def apply_plan(plan, vault=None):
 
     # Delete the planned files — irreversible. Refuses to touch anything outside

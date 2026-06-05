@@ -267,5 +267,35 @@ f3 = list(ctx3.knowledge.writes)[0]
 check("distill: different task -> different filename", f3 != f1)
 
 
+# ---- K-A: auto_curate (scan + apply in one call, offline) ----------------
+from core.curator import auto_curate
+
+av = tempfile.mkdtemp(prefix="oil_autocur_")
+try:
+    def wa(name, content):
+        with open(os.path.join(av, name), "w", encoding="utf-8") as fh:
+            fh.write(content)
+    wa("good.md", "# Note\nA substantive, unique lesson worth keeping in the vault.")
+    wa("err.md", "# Knowledge\nLLM ERROR: Max retries exceeded establishing connection")
+    wa("empty.md", "  \n ")
+    wa("dupA.md", "# Note\nIdentical distilled lesson duplicated across two files here.")
+    wa("dupB.md", "# Note\nIdentical distilled lesson duplicated across two files here.")
+
+    res = auto_curate(vault=av, near_dupes=False)
+    remaining = set(os.listdir(av))
+    check("auto_curate: removed error+empty+one dup (3)", res["deleted"] == 3)
+    check("auto_curate: good note kept", "good.md" in remaining)
+    check("auto_curate: error+empty gone",
+          "err.md" not in remaining and "empty.md" not in remaining)
+    check("auto_curate: exactly one of the dup pair kept",
+          ("dupA.md" in remaining) ^ ("dupB.md" in remaining))
+
+    # Idempotent: a second pass on a clean vault deletes nothing.
+    res2 = auto_curate(vault=av, near_dupes=False)
+    check("auto_curate: idempotent on a clean vault", res2["deleted"] == 0)
+finally:
+    shutil.rmtree(av, ignore_errors=True)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
