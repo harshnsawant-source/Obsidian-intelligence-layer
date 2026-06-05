@@ -23,13 +23,23 @@ class Provider:
     # provider built without an explicit timeout safe.
     DEFAULT_TIMEOUT = 300
 
-    def __init__(self, name, model, tier=4, local=False, cost=0.0, timeout=None):
+    def __init__(self, name, model, tier=4, local=False, cost=0.0, timeout=None,
+                 max_tokens_cap=None):
         self.name = name
         self.model = model
         self.tier = tier
         self.local = local
         self.cost = cost
         self.timeout = timeout if timeout is not None else self.DEFAULT_TIMEOUT
+        # Hard ceiling on output tokens for this provider (None = uncapped). Used
+        # to bound the local floor so a runaway/looping generation cannot emit
+        # indefinitely; the caller's requested max_tokens is clamped to this.
+        self.max_tokens_cap = max_tokens_cap
+
+    def _capped_tokens(self, max_tokens):
+        if self.max_tokens_cap is not None:
+            return min(max_tokens, self.max_tokens_cap)
+        return max_tokens
 
     def generate(self, prompt, fmt=None, max_tokens=8000):
         raise NotImplementedError
@@ -45,7 +55,10 @@ class OllamaProvider(Provider):
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": 0.2, "num_predict": max_tokens},
+            "options": {
+                "temperature": 0.2,
+                "num_predict": self._capped_tokens(max_tokens),
+            },
         }
 
         if fmt:
@@ -77,9 +90,9 @@ class OpenAICompatProvider(Provider):
     kind = "openai_compat"
 
     def __init__(self, name, model, base_url, api_key, tier=2, cost=0.0,
-                 timeout=None):
+                 timeout=None, max_tokens_cap=None):
         super().__init__(name, model, tier=tier, local=False, cost=cost,
-                         timeout=timeout)
+                         timeout=timeout, max_tokens_cap=max_tokens_cap)
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
@@ -88,7 +101,7 @@ class OpenAICompatProvider(Provider):
         body = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
+            "max_tokens": self._capped_tokens(max_tokens),
             "temperature": 0.2,
         }
 

@@ -51,6 +51,7 @@ def build_registry():
                 cfg["name"], cfg["model"],
                 tier=cfg["tier"], local=cfg["local"], cost=cfg.get("cost", 0.0),
                 timeout=cfg.get("timeout"),
+                max_tokens_cap=cfg.get("max_output_tokens"),
             )
 
         elif kind == "openai_compat":
@@ -62,6 +63,7 @@ def build_registry():
                 cfg["name"], cfg["model"], cfg["base_url"], key,
                 tier=cfg["tier"], cost=cfg.get("cost", 0.0),
                 timeout=cfg.get("timeout"),
+                max_tokens_cap=cfg.get("max_output_tokens"),
             )
 
         else:

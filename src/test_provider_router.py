@@ -187,5 +187,40 @@ check("CU1: local timeout wired from config (120, bounded)",
       reg.get("ollama-local") == 120)
 
 
+# --- CU2: local generation token cap ---------------------------------------
+class _CapturingPayload:
+    def __init__(self):
+        self.last_num_predict = None
+
+    def post(self, url, json=None, timeout=None):
+        self.last_num_predict = json["options"]["num_predict"]
+        return _FakeResp()
+
+
+_saved_requests = base_mod.requests
+capp = _CapturingPayload()
+base_mod.requests = capp
+try:
+    # Capped provider clamps a large request down to the cap.
+    OllamaProvider("local", "m", max_tokens_cap=1500).generate("hi", max_tokens=8000)
+    check("CU2: large request clamped to cap", capp.last_num_predict == 1500)
+
+    # A request already under the cap is left untouched.
+    OllamaProvider("local", "m", max_tokens_cap=1500).generate("hi", max_tokens=500)
+    check("CU2: request under cap unchanged", capp.last_num_predict == 500)
+
+    # Uncapped provider passes the request through verbatim.
+    OllamaProvider("cloud", "m").generate("hi", max_tokens=8000)
+    check("CU2: uncapped provider passes tokens through", capp.last_num_predict == 8000)
+finally:
+    base_mod.requests = _saved_requests
+
+# Registry wires the cap: local bounded, cloud uncapped.
+caps = {m.name: m.provider.max_tokens_cap for m in build_registry()}
+check("CU2: local token cap wired from config (1500)",
+      caps.get("ollama-local") == 1500)
+check("CU2: cloud left uncapped", caps.get("ollama-cloud-coder") is None)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

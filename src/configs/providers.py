@@ -26,6 +26,9 @@ PROVIDER_CONFIG = [
     # Tier 4 — local floor: always available, fully private, no quota.
     # Capped at 120s: the local model is the failover floor, not where we wait
     # out long generations — a stall should surface fast and fail over.
+    # max_output_tokens bounds a runaway/looping local generation by token count
+    # (the floor should produce short answers, not 8k-token essays). Cloud is
+    # left uncapped (it is fast and trustworthy for long outputs).
     {
         "name": "ollama-local",
         "kind": "ollama",
@@ -34,6 +37,7 @@ PROVIDER_CONFIG = [
         "local": True,
         "cost": 0.0,
         "timeout": 120,
+        "max_output_tokens": 1500,
         "enabled": True,
     },
 ]
