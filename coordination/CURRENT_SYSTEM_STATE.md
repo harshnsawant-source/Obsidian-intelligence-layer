@@ -1,8 +1,8 @@
 # CURRENT SYSTEM STATE  (canonical — single source of truth)
 
-- **Pinned commit:** `972a8cb` (tree at this commit contains everything below)
+- **Pinned commit:** `07fa86c` (tree at this commit contains everything below)
 - **Date:** 2026-06-05
-- **Status:** Healthy — 10/10 test suites green, 322 checks
+- **Status:** Healthy — 11/11 test suites green
 
 > Rule: nothing is "baseline" until committed. This file always cites a commit
 > whose tree actually contains the claimed capabilities. Do not duplicate this
@@ -30,7 +30,9 @@
   - **CU8** minimal tracing (`core/trace.py`): bounded per-call records at the router chokepoint (served_by / providers_tried / fallback_used / bar / latency / ok / output_kind); opt-in `runtime/trace.jsonl`. Additive; never alters returned values.
   - **CU1** per-provider timeout config (replaces hardcoded 600s): cloud 300s, local floor 120s.
   - **CU2** per-provider output-token cap: local floor capped at 1500 tokens (bounds runaway/looping generation); cloud uncapped.
-  - **Not yet done (await approval):** CU3 breaker tuning, CU4 cloud-pin code, CU5 degenerate-output detection, CU6 failure isolation, CU7 distillation policy.
+  - **CU3** breaker tuning (severe/timeout fast-open). **CU4** cloud-pin non-sensitive code (`produces_code`). **CU5** degenerate-output detection (`output_health`). **CU6** failure isolation (`PlanExecutor` skips failed steps; `delegate` returns "" on failure; `degraded_steps`).
+  - **Planner bypass:** `core/agent_engine.dispatch()` + `needs_planning()` — cheapest sufficient path (direct single agent by default; PlannerAgent only on strong explicit multi-step/multi-deliverable signal). ROUTES extended so coding → development-agent. Benchmark pipeline now measures `dispatch()`; per-trial breaker reset. Measured: pipeline calls 14.5→2.0, latency 312→12.5s, score held 1.00, decomposition failure mode eliminated (see REVIEWS/2026-06-05-planner-bypass-delta-report.md).
+  - **Not yet done (await approval):** CU7 distillation policy. Benchmark V2 (headroom cases). Candidate: development-agent skip retrieval delegate for self-contained tasks.
 
 ## Tests (10 suites, 322 checks)
 semantic_memory · a2a · planner · shared_reasoning · **provider_router (33 — +CU8 trace, CU1 timeout, CU2 token cap)** · phase2 · verification · tools · feedback · **lift_benchmark (40 — +isolation)**.
