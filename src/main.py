@@ -141,7 +141,7 @@ def show_menu():
 
     print("23. Index Obsidian Vault")
 
-    print("24. Search Obsidian Notes")
+    print("24. Ask Obsidian Notes")
 
     print("25. Exit")
 
@@ -570,35 +570,75 @@ def vault_index_interface():
 
 def vault_search_interface():
 
-    # K-B: retrieval over the real vault. Local-only (embeddings only, no
-    # chat-LLM call) so private notes never leave the device. Optional folder
-    # scope, e.g. "daily-ops".
-    print("\n=== SEARCH OBSIDIAN NOTES (local-only) ===\n")
+    # K-C MVP: ask the real vault, local-first. Always shows the extractive
+    # answer (retrieval only, nothing leaves the device); optionally synthesizes
+    # a LOCAL answer; only sends to the cloud after explicit, informed consent
+    # (which is logged). Folder scope optional, e.g. "daily-ops".
+    print("\n=== ASK OBSIDIAN NOTES (local-first; private) ===\n")
     try:
-        from core.vault_store import VaultStore
-        store = VaultStore()
-        query = input("Search your notes:\n\n").strip()
+        from core.vault_qa import (
+            retrieve, extractive_answer, local_synthesis, cloud_synthesis,
+        )
+        from core.consent import consent_count
+
+        query = input("Ask / search your notes:\n\n").strip()
         if not query:
             return
         folder = input(
             "Limit to folder (blank = all, e.g. daily-ops):\n\n"
         ).strip() or None
 
-        results = store.search(query, k=5, folder=folder)
-        if not results:
+        passages = retrieve(query, k=5, folder=folder)
+        if not passages:
             print("\nNo matching notes found.")
             return
 
-        print(f"\nTop {len(results)} notes:\n")
-        for r in results:
-            score = r.get("score")
-            label = f"{score:.3f}" if score is not None else "keyword"
-            print(f"[{label}] {r['folder']}/  {r['source']}")
-            snippet = (r.get("snippet") or "").strip().replace("\n", " ")
-            if snippet:
-                print(f"    {snippet[:160]}")
+        print("\n--- Relevant notes (local; nothing left your device) ---\n")
+        print(extractive_answer(passages))
+
+        if input(
+            "\nSynthesize an answer from these notes locally? [y/N]: "
+        ).strip().lower() != "y":
+            return
+
+        print("\n(local model; private)\n")
+        text, ok = local_synthesis(query, passages)
+        if ok:
+            print(text)
+        else:
+            print("[local model could not produce a reliable answer — "
+                  "your notes above are the result]")
+
+        # Cloud escalation: only on explicit, informed consent.
+        want_more = (not ok) or input(
+            "\nWant a stronger answer? [y/N]: "
+        ).strip().lower() == "y"
+        if not want_more:
+            return
+
+        srcs = [p.get("source") for p in passages[:4]]
+        approx = sum(len(p.get("snippet") or "") for p in passages[:4]) + len(query)
+        print("\n  WARNING: this SENDS your question and the following note "
+              f"snippet(s) (~{approx} chars) to Ollama's cloud servers")
+        print("  (this content LEAVES your device):")
+        for s in srcs:
+            print(f"    - {s}")
+        if input("Proceed? [y/N]: ").strip().lower() != "y":
+            print("Kept local. Nothing was sent.")
+            return
+
+        try:
+            answer = cloud_synthesis(query, passages)
+        except Exception as send_error:
+            # Fail-closed: if consent could not be logged, nothing is sent.
+            print(f"\nNot sent (consent could not be logged / call failed): {send_error}")
+            return
+
+        print("\n--- Cloud answer ---\n")
+        print(answer)
+        print(f"\n[logged to consent_log.jsonl — {consent_count()} total cloud send(s)]")
     except Exception as error:
-        print(f"\nCould not search vault: {error}")
+        print(f"\nCould not answer: {error}")
 
 
 def main():

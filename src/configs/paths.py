@@ -12,6 +12,9 @@ LOGS = BASE_DIR / "logs"
 
 RUNTIME = BASE_DIR / "runtime"
 
+# K-C: audit trail of every consented cloud send of private-note content.
+CONSENT_LOG = RUNTIME / "consent_log.jsonl"
+
 SRC = BASE_DIR / "src"
 
 CONFIGS = SRC / "configs"
