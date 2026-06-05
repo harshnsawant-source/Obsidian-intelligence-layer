@@ -24,7 +24,10 @@ class MemoryIndex:
     def __init__(
         self,
         vault=KNOWLEDGE_VAULT,
-        index_path=MEMORY_INDEX
+        index_path=MEMORY_INDEX,
+        recursive=False,
+        exclude_dirs=None,
+        exclude_name_substrings=None,
     ):
 
         self.vault = Path(vault)
@@ -33,9 +36,41 @@ class MemoryIndex:
 
         self.model = EMBED_MODEL
 
+        # K-B: optional recursive discovery + excludes for indexing a real
+        # Obsidian vault. Defaults (recursive=False, no excludes) reproduce the
+        # original *.md-top-level behavior EXACTLY, so the distillation vault and
+        # document store are unaffected.
+        self.recursive = recursive
+
+        self.exclude_dirs = set(exclude_dirs or ())
+
+        self.exclude_name_substrings = tuple(exclude_name_substrings or ())
+
         self.entries = []
 
         self._load()
+
+    def _discover(self):
+
+        # Yield the .md files to index, applying recursion + excludes.
+        pattern = "**/*.md" if self.recursive else "*.md"
+
+        for file in sorted(self.vault.glob(pattern)):
+
+            try:
+                parts = file.relative_to(self.vault).parts
+            except ValueError:
+                parts = (file.name,)
+
+            if self.exclude_dirs and any(p in self.exclude_dirs for p in parts):
+                continue
+
+            if self.exclude_name_substrings and any(
+                s in file.name for s in self.exclude_name_substrings
+            ):
+                continue
+
+            yield file
 
     def _load(self):
 
@@ -105,7 +140,7 @@ class MemoryIndex:
                 "removed": 0
             }
 
-        for file in sorted(self.vault.glob("*.md")):
+        for file in self._discover():
 
             key = str(file)
 

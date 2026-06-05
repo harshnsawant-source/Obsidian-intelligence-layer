@@ -139,7 +139,11 @@ def show_menu():
 
     print("22. Run Lift Benchmark")
 
-    print("23. Exit")
+    print("23. Index Obsidian Vault")
+
+    print("24. Search Obsidian Notes")
+
+    print("25. Exit")
 
 
 def generate_context_package():
@@ -544,6 +548,59 @@ def run_lift_benchmark_interface():
         print(f"\nBenchmark failed: {error}")
 
 
+def vault_index_interface():
+
+    # K-B: (re)index the real Obsidian vault into a local, read-only index.
+    print("\n=== INDEX OBSIDIAN VAULT ===\n")
+    try:
+        from core.vault_store import VaultStore
+        store = VaultStore()
+        print(f"Indexing notes under: {store.vault}")
+        print("(read-only; private; local embeddings)\n")
+        stats = store.reindex()
+        print(f"Indexed {stats.get('total', 0)} notes "
+              f"(added {stats.get('added', 0)}, updated {stats.get('updated', 0)}, "
+              f"removed {stats.get('removed', 0)}).")
+        folders = store.folders()
+        if folders:
+            print("Folders: " + ", ".join(folders))
+    except Exception as error:
+        print(f"\nCould not index vault: {error}")
+
+
+def vault_search_interface():
+
+    # K-B: retrieval over the real vault. Local-only (embeddings only, no
+    # chat-LLM call) so private notes never leave the device. Optional folder
+    # scope, e.g. "daily-ops".
+    print("\n=== SEARCH OBSIDIAN NOTES (local-only) ===\n")
+    try:
+        from core.vault_store import VaultStore
+        store = VaultStore()
+        query = input("Search your notes:\n\n").strip()
+        if not query:
+            return
+        folder = input(
+            "Limit to folder (blank = all, e.g. daily-ops):\n\n"
+        ).strip() or None
+
+        results = store.search(query, k=5, folder=folder)
+        if not results:
+            print("\nNo matching notes found.")
+            return
+
+        print(f"\nTop {len(results)} notes:\n")
+        for r in results:
+            score = r.get("score")
+            label = f"{score:.3f}" if score is not None else "keyword"
+            print(f"[{label}] {r['folder']}/  {r['source']}")
+            snippet = (r.get("snippet") or "").strip().replace("\n", " ")
+            if snippet:
+                print(f"    {snippet[:160]}")
+    except Exception as error:
+        print(f"\nCould not search vault: {error}")
+
+
 def main():
 
     show_banner()
@@ -656,6 +713,14 @@ def main():
             run_lift_benchmark_interface()
 
         elif choice == "23":
+
+            vault_index_interface()
+
+        elif choice == "24":
+
+            vault_search_interface()
+
+        elif choice == "25":
 
             print(
                 "\nExiting system.\n"
