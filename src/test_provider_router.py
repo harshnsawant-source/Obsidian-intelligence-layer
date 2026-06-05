@@ -140,5 +140,52 @@ for _ in range(5):
 check("trace: ring bounded to capacity", len(small.trace.records) == 3)
 
 
+# --- CU1: per-provider timeout configuration -------------------------------
+import core.providers.base as base_mod
+from core.providers.base import OllamaProvider, Provider
+from core.providers.registry import build_registry
+
+
+class _FakeResp:
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"response": "ok"}
+
+
+class _CapturingRequests:
+    def __init__(self):
+        self.last_timeout = None
+
+    def post(self, url, json=None, timeout=None):
+        self.last_timeout = timeout
+        return _FakeResp()
+
+
+# OllamaProvider passes its configured timeout through to requests.post.
+_saved_requests = base_mod.requests
+cap = _CapturingRequests()
+base_mod.requests = cap
+try:
+    OllamaProvider("p", "m", timeout=42).generate("hi")
+    check("CU1: provider passes configured timeout to request",
+          cap.last_timeout == 42)
+
+    # Default timeout applies when none configured (no more hardcoded 600).
+    OllamaProvider("p", "m").generate("hi")
+    check("CU1: default timeout used when unset",
+          cap.last_timeout == Provider.DEFAULT_TIMEOUT)
+finally:
+    base_mod.requests = _saved_requests
+
+# Registry wires the per-provider timeouts from configs/providers.py.
+reg = {m.name: m.provider.timeout for m in build_registry()}
+check("CU1: cloud timeout wired from config (300)",
+      reg.get("ollama-cloud-coder") == 300)
+check("CU1: local timeout wired from config (120, bounded)",
+      reg.get("ollama-local") == 120)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

@@ -50,6 +50,7 @@ def build_registry():
             provider = OllamaProvider(
                 cfg["name"], cfg["model"],
                 tier=cfg["tier"], local=cfg["local"], cost=cfg.get("cost", 0.0),
+                timeout=cfg.get("timeout"),
             )
 
         elif kind == "openai_compat":
@@ -60,6 +61,7 @@ def build_registry():
             provider = OpenAICompatProvider(
                 cfg["name"], cfg["model"], cfg["base_url"], key,
                 tier=cfg["tier"], cost=cfg.get("cost", 0.0),
+                timeout=cfg.get("timeout"),
             )
 
         else:

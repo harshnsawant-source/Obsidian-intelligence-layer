@@ -18,12 +18,18 @@ class Provider:
 
     kind = "base"
 
-    def __init__(self, name, model, tier=4, local=False, cost=0.0):
+    # Default request timeout (seconds). Per-provider overrides come from
+    # configs/providers.py via the registry. A generous default keeps any
+    # provider built without an explicit timeout safe.
+    DEFAULT_TIMEOUT = 300
+
+    def __init__(self, name, model, tier=4, local=False, cost=0.0, timeout=None):
         self.name = name
         self.model = model
         self.tier = tier
         self.local = local
         self.cost = cost
+        self.timeout = timeout if timeout is not None else self.DEFAULT_TIMEOUT
 
     def generate(self, prompt, fmt=None, max_tokens=8000):
         raise NotImplementedError
@@ -47,7 +53,7 @@ class OllamaProvider(Provider):
 
         started = time.time()
 
-        response = requests.post(OLLAMA_URL, json=payload, timeout=600)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=self.timeout)
 
         response.raise_for_status()
 
@@ -70,8 +76,10 @@ class OpenAICompatProvider(Provider):
 
     kind = "openai_compat"
 
-    def __init__(self, name, model, base_url, api_key, tier=2, cost=0.0):
-        super().__init__(name, model, tier=tier, local=False, cost=cost)
+    def __init__(self, name, model, base_url, api_key, tier=2, cost=0.0,
+                 timeout=None):
+        super().__init__(name, model, tier=tier, local=False, cost=cost,
+                         timeout=timeout)
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
@@ -91,7 +99,7 @@ class OpenAICompatProvider(Provider):
             f"{self.base_url}/chat/completions",
             json=body,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=300,
+            timeout=self.timeout,
         )
 
         response.raise_for_status()
