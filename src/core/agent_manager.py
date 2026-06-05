@@ -22,6 +22,8 @@ from agents.strategy_agent import (
     StrategyAgent
 )
 
+from core.distillation_gate import distillation_suppressed
+
 
 class AgentManager:
 
@@ -65,8 +67,12 @@ class AgentManager:
         task
     ):
 
-        # Agent-to-agent entrypoint. Runs the target agent through its full
-        # run() pipeline (so distillation is preserved) under a depth guard.
+        # Agent-to-agent entrypoint (subtasks + delegation). CU7: a sub-run must
+        # NOT distil — only the TOP-LEVEL result should reach the vault. Every
+        # dispatch is a sub-run (the top-level entry uses execute_task / a direct
+        # .run()), so suppressing distillation here means a planned/delegated run
+        # writes exactly one note (the final top-level output) instead of one per
+        # subtask. Stops per-subtask vault pollution at the source.
 
         if self._depth >= self.MAX_DELEGATION_DEPTH:
 
@@ -84,7 +90,9 @@ class AgentManager:
 
         try:
 
-            return agent.run(task)
+            with distillation_suppressed():
+
+                return agent.run(task)
 
         finally:
 

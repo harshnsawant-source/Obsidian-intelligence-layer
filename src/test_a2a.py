@@ -166,5 +166,17 @@ check("hygiene: distillation restored after context exits",
       len(distill_calls) >= 1)
 
 
+# CU7: a distillable agent distills at the TOP LEVEL (execute_task) but NOT when
+# run as a SUBTASK via dispatch (so a plan writes one note, not one per subtask).
+distill_calls.clear()
+mgr.execute_task("content-agent", "top level note")
+check("CU7: top-level run distills", len(distill_calls) == 1)
+
+distill_calls.clear()
+mgr.dispatch("content-agent", "subtask note")
+check("CU7: dispatched subtask does NOT distill (no per-subtask pollution)",
+      distill_calls == [])
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
