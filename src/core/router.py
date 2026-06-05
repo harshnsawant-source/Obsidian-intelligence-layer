@@ -14,6 +14,13 @@ CANNED_FALLBACK = (
 )
 
 
+def _is_timeout_error(error):
+    # True if the exception (or any base) is a timeout. Checked by class name so
+    # the router stays decoupled from the HTTP library — covers requests'
+    # ReadTimeout / ConnectTimeout / Timeout and any similarly named error.
+    return any("Timeout" in cls.__name__ for cls in type(error).__mro__)
+
+
 class TelemetryAccumulator:
     def __init__(self):
         self.active = False
@@ -134,7 +141,8 @@ class ProviderRouter:
                 return output
 
             except Exception as error:
-                managed.breaker.record_failure()
+                severe = _is_timeout_error(error)
+                managed.breaker.record_failure(severe=severe)
                 log.warning("provider %s failed: %s", managed.name, error)
                 self.trace.record(
                     event="provider_failure",
@@ -142,6 +150,7 @@ class ProviderRouter:
                     bar=bar,
                     prefer_cloud=bool(prefer_cloud),
                     sensitive=bool(sensitive),
+                    severe=severe,
                     error=str(error)[:200],
                 )
                 continue

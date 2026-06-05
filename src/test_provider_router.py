@@ -101,6 +101,47 @@ before = cf3.provider.calls
 r.generate(COMPLEX)
 check("breaker: open provider skipped on next call", cf3.provider.calls == before)
 
+# --- CU3: severe (timeout) failures trip the breaker fast --------------------
+sb = CircuitBreaker(threshold=3, cooldown=60)
+sb.record_failure(severe=True)
+check("CU3: single severe failure opens breaker", sb.state == "OPEN")
+
+nb = CircuitBreaker(threshold=3, cooldown=60)
+nb.record_failure(); nb.record_failure()
+check("CU3: two normal failures stay closed (threshold 3)", nb.state == "CLOSED")
+nb.record_failure()
+check("CU3: third normal failure opens", nb.state == "OPEN")
+
+
+class _ReadTimeout(Exception):
+    pass
+
+
+class _Timeouter:
+    def __init__(self, name, tier, local):
+        self.name = name
+        self.tier = tier
+        self.local = local
+        self.cost = 0.0
+        self.calls = 0
+
+    def generate(self, prompt, fmt=None, max_tokens=8000):
+        self.calls += 1
+        raise _ReadTimeout("read timed out")
+
+
+# A local timeout should shed local after ONE failure, not three.
+to = ManagedProvider(_Timeouter("local", 4, True))
+rto = ProviderRouter([to])
+rto.generate(TRIVIAL)                 # one timeout -> severe -> breaker opens
+calls_after_first = to.provider.calls
+rto.generate(TRIVIAL)                 # breaker open -> provider skipped
+check("CU3: timeout sheds provider after one failure",
+      calls_after_first == 1 and to.provider.calls == 1)
+fail_rec = [r for r in rto.trace.recent(10) if r.get("event") == "provider_failure"][-1]
+check("CU3: timeout flagged severe in trace", fail_rec.get("severe") is True)
+
+
 # --- CU8: per-call tracing (additive; must not change returned values) ------
 
 # success path: one record, served_by set, no fallback
