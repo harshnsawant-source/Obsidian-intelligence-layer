@@ -1,8 +1,8 @@
 # CURRENT SYSTEM STATE  (canonical — single source of truth)
 
-- **Pinned commit:** `07fa86c` (tree at this commit contains everything below)
-- **Date:** 2026-06-05
-- **Status:** Healthy — 11/11 test suites green
+- **Pinned commit:** `8367f17` (tree at this commit contains everything below)
+- **Date:** 2026-06-06
+- **Status:** Healthy — 12/12 test suites green
 
 > Rule: nothing is "baseline" until committed. This file always cites a commit
 > whose tree actually contains the claimed capabilities. Do not duplicate this
@@ -32,7 +32,10 @@
   - **CU2** per-provider output-token cap: local floor capped at 1500 tokens (bounds runaway/looping generation); cloud uncapped.
   - **CU3** breaker tuning (severe/timeout fast-open). **CU4** cloud-pin non-sensitive code (`produces_code`). **CU5** degenerate-output detection (`output_health`). **CU6** failure isolation (`PlanExecutor` skips failed steps; `delegate` returns "" on failure; `degraded_steps`).
   - **Planner bypass:** `core/agent_engine.dispatch()` + `needs_planning()` — cheapest sufficient path (direct single agent by default; PlannerAgent only on strong explicit multi-step/multi-deliverable signal). ROUTES extended so coding → development-agent. Benchmark pipeline now measures `dispatch()`; per-trial breaker reset. Measured: pipeline calls 14.5→2.0, latency 312→12.5s, score held 1.00, decomposition failure mode eliminated (see REVIEWS/2026-06-05-planner-bypass-delta-report.md).
-  - **Not yet done (await approval):** CU7 distillation policy. Benchmark V2 (headroom cases). Candidate: development-agent skip retrieval delegate for self-contained tasks.
+  - **Benchmark V2:** instrument built (3 arms, fractional grading, calibration, MDE+Holm) + 18 validated cases. **Calibration result (settled):** 17/18 ceiling, kept set = 1 → orchestration-lift for coding is answered (negative); no deciding run. See `coordination/BENCHMARK_V2_*`.
+- **Knowledge-work pivot (product roadmap in `coordination/PRODUCT_AUDIT_AND_ROADMAP.md`):**
+  - **Phase K-A DONE:** CU7 — distil only top-level results (subtask/delegated runs suppressed via `AgentManager.dispatch`); auto-curation on startup (`curator.auto_curate`, prunes error/empty + dedups the distillation vault). "Only if novel" = exact-dedup at write + auto-curate near-dedup (no hot-path embedding gate).
+  - **Next (not started):** K-B real Obsidian-vault ingestion + unified retrieval; K-C private-work capability (local reliability + cloud-consent tier); K-D synthesis/connections; K-E cross-run memory.
 
 ## Tests (10 suites, 322 checks)
 semantic_memory · a2a · planner · shared_reasoning · **provider_router (33 — +CU8 trace, CU1 timeout, CU2 token cap)** · phase2 · verification · tools · feedback · **lift_benchmark (40 — +isolation)**.
