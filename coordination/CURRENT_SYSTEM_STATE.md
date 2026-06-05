@@ -1,8 +1,8 @@
 # CURRENT SYSTEM STATE  (canonical — single source of truth)
 
-- **Pinned commit:** `8367f17` (tree at this commit contains everything below)
+- **Pinned commit:** `ff0d3a7` (tree at this commit contains everything below)
 - **Date:** 2026-06-06
-- **Status:** Healthy — 12/12 test suites green
+- **Status:** Healthy — 13/13 test suites green
 
 > Rule: nothing is "baseline" until committed. This file always cites a commit
 > whose tree actually contains the claimed capabilities. Do not duplicate this
@@ -35,7 +35,8 @@
   - **Benchmark V2:** instrument built (3 arms, fractional grading, calibration, MDE+Holm) + 18 validated cases. **Calibration result (settled):** 17/18 ceiling, kept set = 1 → orchestration-lift for coding is answered (negative); no deciding run. See `coordination/BENCHMARK_V2_*`.
 - **Knowledge-work pivot (product roadmap in `coordination/PRODUCT_AUDIT_AND_ROADMAP.md`):**
   - **Phase K-A DONE:** CU7 — distil only top-level results (subtask/delegated runs suppressed via `AgentManager.dispatch`); auto-curation on startup (`curator.auto_curate`, prunes error/empty + dedups the distillation vault). "Only if novel" = exact-dedup at write + auto-curate near-dedup (no hot-path embedding gate).
-  - **Next (not started):** K-B real Obsidian-vault ingestion + unified retrieval; K-C private-work capability (local reliability + cloud-consent tier); K-D synthesis/connections; K-E cross-run memory.
+  - **Phase K-B DONE:** real Obsidian-vault ingestion — `core/vault_store.py` (`VaultStore`), `MemoryIndex` recursive+exclude (backward-compatible), menu #23 Index / #24 Search. Local-only (nomic embeddings, no chat-LLM call); source-path + folder metadata; ~32 notes indexed live. Untouched: routing/planner/orchestration/distillation.
+  - **Next (not started):** K-C private-work capability (local reliability + explicit cloud-consent tier; needs design review); K-D synthesis/connections over the vault; K-E cross-run memory.
 
 ## Tests (10 suites, 322 checks)
 semantic_memory · a2a · planner · shared_reasoning · **provider_router (33 — +CU8 trace, CU1 timeout, CU2 token cap)** · phase2 · verification · tools · feedback · **lift_benchmark (40 — +isolation)**.
