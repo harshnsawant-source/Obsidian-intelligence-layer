@@ -348,6 +348,280 @@ Response:"""
     return report
 
 
+# ===========================================================================
+# Benchmark V2 — additive parallel path (V1 above is untouched).
+# Three arms (A baseline / B verified-single / C verified-planner), fractional
+# objective grading on hidden tests, independent calibration, MDE + Holm.
+# ===========================================================================
+
+import random  # noqa: E402
+
+LIFT_V2_JSON = SRC.parent / "runtime" / "lift_v2_reports.json"
+LIFT_V2_MD = SRC.parent / "runtime" / "lift_v2_report.md"
+
+# Pairwise comparisons: B-A (verification), C-B (decomposition), C-A (total).
+V2_PAIRS = [("B", "A"), ("C", "B"), ("C", "A")]
+
+
+def run_trial_v2(task, runner_fn, grader):
+    # Like run_trial but: arm-agnostic (runner passed in), grades with the case's
+    # fractional grader, and captures WALL-CLOCK (telemetry latency counts only
+    # successful calls, so it understates the true cost of slow/failed paths).
+    _router.telemetry.reset()
+    _router.telemetry.active = True
+    for managed in _router.providers:
+        managed.breaker.reset()
+
+    score = 0.0
+    output = ""
+    error = None
+
+    t0 = time.time()
+    try:
+        output = runner_fn(task)
+        score = float(grader(task, output).score)
+    except Exception as e:
+        error = str(e)
+    wall = time.time() - t0
+
+    _router.telemetry.active = False
+
+    infra_error = bool(error) or (
+        isinstance(output, str) and CANNED_FALLBACK in output
+    )
+
+    return {
+        "score": score,
+        "calls": _router.telemetry.calls,
+        "prompt_tokens": _router.telemetry.prompt_tokens,
+        "completion_tokens": _router.telemetry.completion_tokens,
+        "latency": _router.telemetry.latency,
+        "wall": wall,
+        "error": error,
+        "infra_error": infra_error,
+    }
+
+
+def _arm_aggregate(trials):
+    valid = [t for t in trials if not t.get("infra_error")]
+    used = valid if valid else trials
+
+    score_mean, score_std = mean_std([t["score"] for t in used])
+    calls_mean, _ = mean_std([t.get("calls", 0) for t in used])
+    tokens_mean, _ = mean_std(
+        [t.get("prompt_tokens", 0) + t.get("completion_tokens", 0) for t in used]
+    )
+    wall_mean, _ = mean_std([t.get("wall", 0.0) for t in used])
+
+    return {
+        "n": len(used),
+        "infra_errors": len(trials) - len(valid),
+        "score_mean": score_mean,
+        "score_std": score_std,
+        "calls_mean": calls_mean,
+        "tokens_mean": tokens_mean,
+        "wall_mean": wall_mean,
+    }
+
+
+def _one_sided_p(z):
+    # P(Z >= z) for a standard normal.
+    return 0.5 * math.erfc(z / math.sqrt(2))
+
+
+_COST_KEY = {"wall": "wall_mean", "calls": "calls_mean", "tokens": "tokens_mean"}
+
+
+def _pair_lift(hi, lo, k_sig, cost_axis):
+    lift = hi["score_mean"] - lo["score_mean"]
+    se = math.sqrt(
+        (hi["score_std"] ** 2) / max(1, hi["n"])
+        + (lo["score_std"] ** 2) / max(1, lo["n"])
+    )
+    if se > 0:
+        z = lift / se
+        p = _one_sided_p(z)
+    else:
+        z = float("inf") if lift > 0 else 0.0
+        p = 0.0 if lift > 0 else 1.0
+
+    cost_key = _COST_KEY[cost_axis]
+    extra = hi[cost_key] - lo[cost_key]
+    cost_adjusted = (lift / extra) if extra > 0 else lift
+
+    return {
+        "lift": lift,
+        "se": se,
+        "z": (None if z == float("inf") else z),
+        "p": p,
+        "mde": k_sig * se,           # smallest lift we could call significant
+        "extra_cost": extra,
+        "cost_adjusted": cost_adjusted,
+        "significant_raw": (z >= k_sig),
+    }
+
+
+def analyze_v2(results, k_sig=2.0, cost_axis="wall"):
+    from collections import defaultdict
+
+    cases_out = []
+    cat_trials = defaultdict(lambda: defaultdict(list))
+
+    for cid, data in results.items():
+        case_rec = {"id": cid, "category": data["category"], "arms": {}}
+        for arm, trials in data["arms"].items():
+            case_rec["arms"][arm] = _arm_aggregate(trials)
+            cat_trials[data["category"]][arm].extend(trials)
+        cases_out.append(case_rec)
+
+    cat_out = []
+    family = []   # all (category, pair) tests -> Holm corrected together
+    for cat, arms in cat_trials.items():
+        aggs = {a: _arm_aggregate(ts) for a, ts in arms.items()}
+        pairs = {}
+        for hi, lo in V2_PAIRS:
+            if hi in aggs and lo in aggs:
+                rec = _pair_lift(aggs[hi], aggs[lo], k_sig, cost_axis)
+                pairs[f"{hi}-{lo}"] = rec
+                family.append(rec)
+        cat_out.append({"category": cat, "arms": aggs, "pairs": pairs})
+
+    # Holm-Bonferroni step-down over the whole family (one-sided alpha from k_sig).
+    alpha = _one_sided_p(k_sig)
+    m = len(family)
+    stop = False
+    for i, rec in enumerate(sorted(family, key=lambda r: r["p"])):
+        thresh = alpha / (m - i) if (m - i) > 0 else alpha
+        sig = (not stop) and (rec["p"] <= thresh)
+        if not sig:
+            stop = True
+        rec["holm_threshold"] = thresh
+        rec["significant_holm"] = sig
+        rec["earns_cost"] = bool(sig and rec["cost_adjusted"] > 0.0)
+
+    return {
+        "cases": cases_out,
+        "categories": cat_out,
+        "k_sig": k_sig,
+        "cost_axis": cost_axis,
+        "alpha": alpha,
+        "family_size": m,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def save_reports_v2(report):
+    LIFT_V2_JSON.parent.mkdir(parents=True, exist_ok=True)
+    LIFT_V2_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Benchmark V2 Report",
+        f"Generated: {report['timestamp']}",
+        f"k_sig={report['k_sig']} (one-sided alpha={report['alpha']:.4f}), "
+        f"cost_axis={report['cost_axis']}, Holm family={report['family_size']}",
+        "",
+        "Arms: A=baseline | B=verified-single | C=verified-planner "
+        "(verification identical in B and C).",
+        "",
+        "| Category | Pair | Lift | MDE | Cost-adj | Holm sig | Earns cost? |",
+        "| :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
+    ]
+    for c in report["categories"]:
+        for name, r in c["pairs"].items():
+            lines.append(
+                f"| {c['category']} | {name} | {r['lift']:.3f} | {r['mde']:.3f} | "
+                f"{r['cost_adjusted']:.3f} | "
+                f"{'yes' if r['significant_holm'] else 'no'} | "
+                f"{'✅ YES' if r['earns_cost'] else '❌ NO'} |"
+            )
+    lines.append("")
+    lines.append("> A null result (no pair earns cost) is a valid, expected outcome: "
+                 "it means the cheaper arm wins. 'no Holm sig' with lift < MDE means "
+                 "underpowered, not necessarily zero lift.")
+    LIFT_V2_MD.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nV2 reports written to:\n- {LIFT_V2_JSON}\n- {LIFT_V2_MD}")
+
+
+def run_calibration(cases, K=5, ceiling=0.9, floor=0.1, max_std=0.35,
+                    seed=0, isolate=True, keep_vault=False):
+    # INDEPENDENT calibration: arm A only. ELIMINATES obvious ceiling/floor/
+    # high-variance cases (no mid-band selection -> no regression-to-mean bias).
+    # These trials are NOT reused by run_v2 (the deciding run draws fresh trials).
+    from core.eval.arms import ARMS
+
+    vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
+    rows = []
+    with vault_cm, distillation_suppressed():
+        for case in cases:
+            grader = make_grader(
+                {"grader": "fractional_code", "hidden_tests": case["hidden_tests"]}
+            )
+            pub = case["public_tests"]
+            trials = [
+                run_trial_v2(case["task"], (lambda t, p=pub: ARMS["A"](t, p)), grader)
+                for _ in range(K)
+            ]
+            agg = _arm_aggregate(trials)
+            if agg["score_mean"] >= ceiling:
+                verdict = "drop:ceiling"
+            elif agg["score_mean"] <= floor:
+                verdict = "drop:floor"
+            elif agg["score_std"] >= max_std:
+                verdict = "drop:high-variance"
+            else:
+                verdict = "keep"
+            rows.append({
+                "id": case["id"],
+                "baseline_mean": agg["score_mean"],
+                "baseline_std": agg["score_std"],
+                "infra_errors": agg["infra_errors"],
+                "verdict": verdict,
+            })
+
+    return {
+        "k_cal": K,
+        "thresholds": {"ceiling": ceiling, "floor": floor, "max_std": max_std},
+        "cases": rows,
+        "kept": [r["id"] for r in rows if r["verdict"] == "keep"],
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def run_v2(cases, K=8, arms=("A", "B", "C"), k_sig=2.0, cost_axis="wall",
+           seed=0, isolate=True, keep_vault=False):
+    # Deciding run. Arm execution order is RANDOMIZED per trial so a transient
+    # outage cannot systematically bias one arm. Fresh trials (never the
+    # calibration ones).
+    from core.eval.arms import ARMS
+
+    rng = random.Random(seed)
+    results = {}
+    vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
+
+    with vault_cm, distillation_suppressed():
+        for case in cases:
+            grader = make_grader(
+                {"grader": "fractional_code", "hidden_tests": case["hidden_tests"]}
+            )
+            pub = case["public_tests"]
+            per_arm = {a: [] for a in arms}
+            for _ in range(K):
+                order = list(arms)
+                rng.shuffle(order)
+                for a in order:
+                    runner = (lambda t, _a=a, p=pub: ARMS[_a](t, p))
+                    per_arm[a].append(run_trial_v2(case["task"], runner, grader))
+            results[case["id"]] = {
+                "id": case["id"],
+                "category": case["category"],
+                "arms": per_arm,
+            }
+
+    report = analyze_v2(results, k_sig=k_sig, cost_axis=cost_axis)
+    save_reports_v2(report)
+    return report
+
+
 if __name__ == "__main__":
     # Usage: python -m core.eval.lift_benchmark [K] [Category[,Category...]] [--keep-vault]
     #   K           number of trials per case (default 3)
