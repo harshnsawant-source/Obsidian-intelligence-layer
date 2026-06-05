@@ -1,8 +1,8 @@
 # CURRENT SYSTEM STATE  (canonical — single source of truth)
 
-- **Pinned commit:** `714b017` (tree at this commit contains everything below)
-- **Date:** 2026-06-04
-- **Status:** Healthy — 10/10 test suites green, 295 checks
+- **Pinned commit:** `972a8cb` (tree at this commit contains everything below)
+- **Date:** 2026-06-05
+- **Status:** Healthy — 10/10 test suites green, 322 checks
 
 > Rule: nothing is "baseline" until committed. This file always cites a commit
 > whose tree actually contains the claimed capabilities. Do not duplicate this
@@ -25,10 +25,15 @@
 - **Phase 7:** eval harness + curator.
 - **Phase 4:** PlannerAgent + PlanExecutor + SharedExecutionContext (sequential).
 - **Phase 5 / 5.1:** structured reasoning (findings/decisions/artifacts/risks/assumptions), provenance, dedup, `reported_by` consensus, contribution strip.
-- **Phase A (this commit):** orchestration lift benchmark (`core/eval/lift_benchmark.py`, menu #22) — canonical `PlannerAgent` pipeline vs strong single-call baseline; significance-gated, cost-adjusted (calls/tokens/latency), infra-failure aware; cases tagged by grader reliability.
+- **Phase A:** orchestration lift benchmark (`core/eval/lift_benchmark.py`, menu #22) — canonical `PlannerAgent` pipeline vs strong single-call baseline; significance-gated, cost-adjusted (calls/tokens/latency), infra-failure aware; cases tagged by grader reliability. **+ isolated benchmark vault** (`core/eval/benchmark_vault.py`) so runs cannot pollute/read the real vault.
+- **Week 1 reliability (CU8/CU1/CU2 — this commit):**
+  - **CU8** minimal tracing (`core/trace.py`): bounded per-call records at the router chokepoint (served_by / providers_tried / fallback_used / bar / latency / ok / output_kind); opt-in `runtime/trace.jsonl`. Additive; never alters returned values.
+  - **CU1** per-provider timeout config (replaces hardcoded 600s): cloud 300s, local floor 120s.
+  - **CU2** per-provider output-token cap: local floor capped at 1500 tokens (bounds runaway/looping generation); cloud uncapped.
+  - **Not yet done (await approval):** CU3 breaker tuning, CU4 cloud-pin code, CU5 degenerate-output detection, CU6 failure isolation, CU7 distillation policy.
 
-## Tests (10 suites, 295 checks)
-semantic_memory · a2a · planner · shared_reasoning · provider_router · phase2 · verification · tools · feedback · **lift_benchmark (31)**.
+## Tests (10 suites, 322 checks)
+semantic_memory · a2a · planner · shared_reasoning · **provider_router (33 — +CU8 trace, CU1 timeout, CU2 token cap)** · phase2 · verification · tools · feedback · **lift_benchmark (40 — +isolation)**.
 
 ## Do NOT rebuild (extend only)
 Router · Sandbox · PlannerAgent · PlanExecutor · SharedExecutionContext · MemoryIndex · Verification · Tool framework · Eval/lift harness.
@@ -38,6 +43,7 @@ Router · Sandbox · PlannerAgent · PlanExecutor · SharedExecutionContext · M
 - Objective lift signal exists only for **Engineering/code** cases (sandbox). Research/Architecture graders are `shallow` (keyword presence ≠ quality) — treat those lift numbers as provisional until a cross-model judge exists.
 - Live benchmark runs `PlannerAgent.run()`, which **distills to the real vault** → benchmark pollutes the vault; needs an isolated benchmark vault.
 - Sequential execution (no parallel DAG); no budget/quota governance.
+- **Reliability (partial — Week 1 in progress):** provider stalls are now bounded by timeout (CU1) + token cap (CU2) and visible via trace (CU8). Still open: breaker still needs 3 failures to shed local (CU3); code subtasks not yet cloud-pinned (CU4); repetition-loop / `[NO FINAL ANSWER GENERATED]` output is not yet detected as failure (CU5); a degraded subtask still threads forward into the merge (CU6); distillation still fires per subtask (CU7).
 - Cross-run structured retrieval not wired (`to_dict` seam + `episodes` unused); context is per-run.
 - No full run tracing yet (telemetry is per-run only; Phase B extends it).
 - Free-only constraint vs paid cross-model ambition (decide at Phase D).
