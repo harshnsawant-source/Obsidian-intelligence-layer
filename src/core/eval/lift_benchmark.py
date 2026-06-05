@@ -59,6 +59,12 @@ def run_trial(case, runner_fn):
     _router.telemetry.reset()
     _router.telemetry.active = True
 
+    # Benchmark hygiene: reset every provider's circuit breaker so a trial never
+    # inherits breaker state (e.g. a local breaker left OPEN by a prior trial),
+    # which would make per-trial failure attribution order-dependent.
+    for managed in _router.providers:
+        managed.breaker.reset()
+
     score = 0.0
     output = ""
     error = None
@@ -271,7 +277,6 @@ def save_reports(report):
 def run_benchmark(K=3, categories=None, isolate=True, keep_vault=False):
     # Imported here (not at module top) so the offline unit tests can import this
     # module without pulling the full agent stack.
-    from agents.planner_agent import PlannerAgent
     from core.eval.benchmark_vault import isolated_vault
 
     cases = load_benchmark_cases()
@@ -293,10 +298,10 @@ def run_benchmark(K=3, categories=None, isolate=True, keep_vault=False):
     vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
 
     with vault_cm:
-        return _run_cases(cases, K, PlannerAgent)
+        return _run_cases(cases, K)
 
 
-def _run_cases(cases, K, PlannerAgent):
+def _run_cases(cases, K):
     results = {}
 
     for case in cases:
@@ -313,11 +318,13 @@ Task:
 Response:"""
             return query_llm(prompt, prefer_cloud=True)
 
-        # Run B — the CANONICAL pipeline: PlannerAgent -> PlanExecutor ->
-        # SharedExecutionContext (structured reasoning), NOT the bare DAG
-        # Planner. run() returns the merged final report.
+        # Run B — the CANONICAL pipeline: dispatch() applies the cheapest
+        # sufficient path (direct single agent by default; PlannerAgent only
+        # when needs_planning() finds strong evidence). This measures the
+        # planner-bypass system, not the planner in isolation.
         def pipeline_runner(task):
-            return PlannerAgent().run(task)
+            from core.agent_engine import dispatch
+            return dispatch(task)
 
         baseline_trials = [run_trial(case, baseline_runner) for _ in range(K)]
         pipeline_trials = [run_trial(case, pipeline_runner) for _ in range(K)]

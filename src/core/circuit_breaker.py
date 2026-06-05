@@ -26,6 +26,14 @@ class CircuitBreaker:
             return False
         return True
 
+    def reset(self):
+        # Full reset to the initial CLOSED state. Used by the benchmark harness
+        # so one trial cannot inherit another's breaker state (which would make
+        # per-trial failure attribution order-dependent).
+        self.fails = 0
+        self.state = "CLOSED"
+        self.opened_at = 0.0
+
     def record_success(self):
         self.fails = 0
         self.state = "CLOSED"
