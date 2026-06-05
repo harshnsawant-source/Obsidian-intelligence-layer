@@ -218,5 +218,58 @@ check("planner-agent: execute dispatched every subtask", len(fm5.calls) == 2)
 check("planner-agent: progress shown for each step", prog == [1, 2])
 
 
+# ===================== CU6: failure isolation =====================
+
+from core.router import CANNED_FALLBACK
+
+
+# record_degraded: failed step is recorded, NOT counted as an output, and is
+# surfaced in render WITHOUT its garbage content.
+secd = SharedExecutionContext("g")
+secd.record_degraded("retrieval-agent", "lookup context", "canned_fallback")
+check("CU6: record_degraded populates degraded_steps",
+      len(secd.degraded_steps) == 1
+      and secd.degraded_steps[0]["agent"] == "retrieval-agent")
+check("CU6: degraded step is not an output", secd.outputs == [])
+rd = secd.render()
+check("CU6: degraded-only context renders the failure",
+      "Degraded steps" in rd and "retrieval-agent" in rd)
+
+
+class FailingManager:
+    def __init__(self, fail_agent):
+        self.agents = {n: 1 for n in [
+            "research-agent", "development-agent", "operations-agent",
+            "content-agent", "retrieval-agent", "strategy-agent"]}
+        self.fail_agent = fail_agent
+        self.calls = []
+
+    def dispatch(self, name, task):
+        self.calls.append((name, task))
+        if name == self.fail_agent:
+            return CANNED_FALLBACK
+        return f"OUTPUT[{name}]"
+
+
+fmgr = FailingManager(fail_agent="retrieval-agent")
+plan_cu6 = [
+    {"task": "retrieve context", "agent": "retrieval-agent"},
+    {"task": "build it", "agent": "development-agent"},
+]
+ctx6 = PlanExecutor(manager=fmgr).run("goal", plan_cu6)
+check("CU6: failed subtask kept out of outputs",
+      [o["agent"] for o in ctx6.outputs] == ["development-agent"])
+check("CU6: failed subtask recorded as degraded",
+      len(ctx6.degraded_steps) == 1
+      and ctx6.degraded_steps[0]["reason"] == "canned_fallback")
+check("CU6: run continued past the failure",
+      any(n == "development-agent" for n, _ in fmgr.calls))
+dev_prompt = [t for n, t in fmgr.calls if n == "development-agent"][0]
+check("CU6: canned text NOT threaded into downstream subtask",
+      CANNED_FALLBACK not in dev_prompt)
+check("CU6: downstream is told a prior step failed",
+      "Degraded steps" in dev_prompt and "retrieval-agent" in dev_prompt)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

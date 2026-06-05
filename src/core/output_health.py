@@ -63,3 +63,18 @@ def is_degenerate(
                 return True, f"low_distinct_ratio_{distinct_ratio:.2f}"
 
     return False, ""
+
+
+def is_failed_output(text, extra_markers=()):
+    """True if `text` should be treated as a FAILED subtask result — either
+    degenerate (see is_degenerate) or matching a caller-supplied failure marker.
+
+    Callers pass the router's canned all-providers-down sentinel as an extra
+    marker (output_health stays decoupled from the router, so no circular
+    import). Returns (is_failed, reason); reason is "" when usable.
+    """
+    if isinstance(text, str):
+        for marker in extra_markers:
+            if marker and marker in text:
+                return True, "canned_fallback"
+    return is_degenerate(text)

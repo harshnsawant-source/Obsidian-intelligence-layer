@@ -61,6 +61,7 @@ class SharedExecutionContext:
         # --- populated, full fidelity ---
         self.outputs = []          # [{agent, task, output}]
         self.completed_steps = []  # [{task, agent}]
+        self.degraded_steps = []   # [{agent, task, reason}]  (CU6 failure isolation)
         self.findings = []         # [finding record]
         self.decisions = []        # [decision record]
         self.artifacts = {}        # {logical_id: [version records]}  (#4)
@@ -89,6 +90,19 @@ class SharedExecutionContext:
 
         self.outputs.append({"agent": agent, "task": task, "output": output})
         self.completed_steps.append({"task": task, "agent": agent})
+
+    def record_degraded(self, agent, task, reason):
+
+        # CU6: a subtask that failed (canned fallback / degenerate output). Its
+        # content is deliberately NOT stored in outputs, so it can never be
+        # threaded into a downstream prompt or the final merge. It is recorded
+        # explicitly here so the failure is visible (and downstream steps can be
+        # told a prior step failed) without propagating the garbage.
+        self.degraded_steps.append({
+            "agent": agent,
+            "task": task,
+            "reason": str(reason or "failed"),
+        })
 
     def add_finding(self, finding, source="", confidence=None, agent=None):
 
@@ -337,7 +351,8 @@ class SharedExecutionContext:
         sections = []
 
         non_empty = any([self.decisions, self.findings, self.artifacts,
-                         self.risks, self.assumptions, self.outputs])
+                         self.risks, self.assumptions, self.outputs,
+                         self.degraded_steps])
 
         if non_empty:
             sections.append(f"Goal: {self.goal}")
@@ -402,6 +417,17 @@ class SharedExecutionContext:
             ]
             sections.append("Assumptions:\n" + "\n".join(lines))
 
+        # Degraded steps (failed; content discarded). Brief, so downstream steps
+        # and the merge KNOW a step failed without seeing its garbage output.
+        deg = self.degraded_steps[-items:] if items else self.degraded_steps
+        if deg:
+            lines = [
+                f"[{d['agent']}] {_clip(d['task'], SNIPPET_CHARS)} "
+                f"— FAILED ({d['reason']}); output discarded"
+                for d in deg
+            ]
+            sections.append("Degraded steps:\n" + "\n".join(lines))
+
         # Raw outputs LAST (biggest sink; trimmed first under budget).
         outs = self.outputs[-recent_outputs:] if recent_outputs else self.outputs
         if outs:
@@ -463,6 +489,7 @@ class SharedExecutionContext:
             "goal": self.goal,
             "outputs": self.outputs,
             "completed_steps": self.completed_steps,
+            "degraded_steps": self.degraded_steps,
             "findings": self.findings,
             "decisions": self.decisions,
             "artifacts": self.artifacts,
@@ -479,6 +506,7 @@ class SharedExecutionContext:
         ctx = cls(data.get("goal", ""))
         ctx.outputs = list(data.get("outputs", []))
         ctx.completed_steps = list(data.get("completed_steps", []))
+        ctx.degraded_steps = list(data.get("degraded_steps", []))
         ctx.findings = list(data.get("findings", []))
         ctx.decisions = list(data.get("decisions", []))
         ctx.artifacts = dict(data.get("artifacts", {}))

@@ -1,6 +1,8 @@
 import json
 
 from core.llm_engine import query_llm
+from core.router import CANNED_FALLBACK
+from core.output_health import is_failed_output
 from core.agent_engine import route_agent
 from core.agent_manager import AgentManager
 from core.verification import refine
@@ -360,6 +362,21 @@ class PlanExecutor:
             framed = self._frame(task, ctx)
 
             output = self.manager.dispatch(agent, framed)
+
+            # CU6 failure isolation: a failed subtask (canned all-providers
+            # fallback or degenerate output) must NOT be threaded forward — it
+            # would poison every downstream step and the final merge. Record it
+            # explicitly as degraded and continue; the run survives one bad step.
+            failed, reason = is_failed_output(
+                output, extra_markers=(CANNED_FALLBACK,)
+            )
+            if failed:
+                log.warning(
+                    "subtask [%s] failed (%s) — isolated, not threaded forward",
+                    agent, reason,
+                )
+                ctx.record_degraded(agent, task, reason)
+                continue
 
             ctx.record_output(agent, task, output)
 

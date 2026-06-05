@@ -4,6 +4,8 @@ from capability.core.runtime_context import RuntimeContext
 from capability.core.skill_loader import load_skill
 
 from core.llm_engine import query_llm
+from core.router import CANNED_FALLBACK
+from core.output_health import is_failed_output
 from core.memory_writer import save_memory
 from core.context_builder import build_context
 from core.verification import refine
@@ -71,12 +73,22 @@ class BaseAgent:
         if not self.broker or agent_name == self.name:
             return ""
 
+        output = self.broker.dispatch(agent_name, task)
+
+        # CU6 failure isolation: if the delegated agent failed (canned fallback
+        # or degenerate output), return "" rather than injecting garbage into
+        # THIS agent's prompt. consume() already skips empty results, so the
+        # caller simply proceeds with no extra context.
+        failed, _ = is_failed_output(output, extra_markers=(CANNED_FALLBACK,))
+        if failed:
+            return ""
+
         # Strip any structured contribution block before the delegated output is
         # injected into THIS agent's prompt, so the receiver reasons over the
         # content and doesn't mimic the machine format (Phase 5.1, issue 1).
         # Top-level parsing is unaffected: the executor parses the agent's own
         # output on the separate manager.dispatch path.
-        return strip_contributions(self.broker.dispatch(agent_name, task))
+        return strip_contributions(output)
 
     def consume(self, agent_names, task):
 

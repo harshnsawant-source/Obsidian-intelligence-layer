@@ -350,5 +350,18 @@ check("CU5: all-degenerate -> canned fallback",
       ProviderRouter([dc2, dl2]).generate(COMPLEX) == CANNED_FALLBACK)
 
 
+# --- CU6: is_failed_output (degenerate OR caller-supplied failure marker) ----
+from core.output_health import is_failed_output
+
+check("CU6: is_failed_output flags canned via extra marker",
+      is_failed_output(CANNED_FALLBACK, extra_markers=(CANNED_FALLBACK,))[0] is True)
+check("CU6: canned reason is canned_fallback",
+      is_failed_output(CANNED_FALLBACK, extra_markers=(CANNED_FALLBACK,))[1] == "canned_fallback")
+check("CU6: is_failed_output flags degenerate (no marker needed)",
+      is_failed_output("")[0] is True)
+check("CU6: is_failed_output passes healthy text",
+      is_failed_output("A normal, complete answer.", extra_markers=(CANNED_FALLBACK,))[0] is False)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

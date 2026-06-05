@@ -110,5 +110,40 @@ try:
 except RecursionError:
     check("depth guard: cyclic delegation terminates", False)
 
+# CU6: a failed/canned/degenerate delegated output must NOT poison the caller —
+# delegate() returns "" (consume() already skips empty), so the caller proceeds
+# with no extra context instead of injecting garbage into its prompt.
+from core.router import CANNED_FALLBACK
+
+
+class _Canned(BaseAgent):
+    distillable = False
+
+    def execute(self, task):
+        return CANNED_FALLBACK
+
+
+class _Degen(BaseAgent):
+    distillable = False
+
+    def execute(self, task):
+        return "[NO FINAL ANSWER GENERATED]\n\nThinking process..."
+
+
+mgr.agents["canned-agent"] = _Canned("canned-agent", "test")
+mgr.agents["degen-agent"] = _Degen("degen-agent", "test")
+mgr.agents["canned-agent"].broker = mgr
+mgr.agents["degen-agent"].broker = mgr
+
+probe = StrategyAgent()
+probe.broker = mgr
+check("CU6: delegate returns '' on canned output",
+      probe.delegate("canned-agent", "x") == "")
+check("CU6: delegate returns '' on degenerate output",
+      probe.delegate("degen-agent", "x") == "")
+check("CU6: delegate still returns healthy output normally",
+      probe.delegate("content-agent", "write something").strip() != "")
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
