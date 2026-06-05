@@ -1,8 +1,8 @@
 # CURRENT SYSTEM STATE  (canonical — single source of truth)
 
-- **Pinned commit:** `ff0d3a7` (tree at this commit contains everything below)
+- **Pinned commit:** `044103b` (tree at this commit contains everything below)
 - **Date:** 2026-06-06
-- **Status:** Healthy — 13/13 test suites green
+- **Status:** Healthy — 14/14 test suites green
 
 > Rule: nothing is "baseline" until committed. This file always cites a commit
 > whose tree actually contains the claimed capabilities. Do not duplicate this
@@ -36,7 +36,8 @@
 - **Knowledge-work pivot (product roadmap in `coordination/PRODUCT_AUDIT_AND_ROADMAP.md`):**
   - **Phase K-A DONE:** CU7 — distil only top-level results (subtask/delegated runs suppressed via `AgentManager.dispatch`); auto-curation on startup (`curator.auto_curate`, prunes error/empty + dedups the distillation vault). "Only if novel" = exact-dedup at write + auto-curate near-dedup (no hot-path embedding gate).
   - **Phase K-B DONE:** real Obsidian-vault ingestion — `core/vault_store.py` (`VaultStore`), `MemoryIndex` recursive+exclude (backward-compatible), menu #23 Index / #24 Search. Local-only (nomic embeddings, no chat-LLM call); source-path + folder metadata; ~32 notes indexed live. Untouched: routing/planner/orchestration/distillation.
-  - **Next (not started):** K-C private-work capability (local reliability + explicit cloud-consent tier; needs design review); K-D synthesis/connections over the vault; K-E cross-run memory.
+  - **Phase K-C MVP DONE:** ask the vault local-first — `core/vault_qa.py` (extractive answer = no-LLM local floor; `local_synthesis` sensitive→local with degenerate fallback; `cloud_synthesis` = only egress, logs consent first, fail-closed) + `core/consent.py` audit log (`runtime/consent_log.jsonl`). Menu #24 "Ask Obsidian Notes" with informed per-query cloud consent. Leak guarantee: retrieval+extractive+local never leave the device; every cloud send is user-approved + logged (15 tests incl. leak-rate audit + fail-closed). Untouched: routing/planner/orchestration; no session/folder consent.
+  - **Next (not started):** K-D synthesis/connections over the vault ([[link]] surfacing, related-note discovery); K-E cross-run memory. Known limitation: local-synthesis quality is bounded by the 4B (extractive floor + consented cloud mitigate).
 
 ## Tests (10 suites, 322 checks)
 semantic_memory · a2a · planner · shared_reasoning · **provider_router (33 — +CU8 trace, CU1 timeout, CU2 token cap)** · phase2 · verification · tools · feedback · **lift_benchmark (40 — +isolation)**.
