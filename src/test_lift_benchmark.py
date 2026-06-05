@@ -234,5 +234,29 @@ finally:
     runtime_context.PROJECT_ROOT, memory_writer.MEMORIES_DIR, context_builder._index = _orig
 
 
+# ---- distillation gate (benchmark hygiene) --------------------------------
+from core.distillation_gate import distillation_enabled, distillation_suppressed
+
+check("gate: enabled by default", distillation_enabled() is True)
+with distillation_suppressed():
+    check("gate: suppressed inside context", distillation_enabled() is False)
+check("gate: restored after context", distillation_enabled() is True)
+
+# Exception-safe restore.
+try:
+    with distillation_suppressed():
+        raise RuntimeError("boom")
+except RuntimeError:
+    pass
+check("gate: restored after exception", distillation_enabled() is True)
+
+# Nested: inner exit must not re-enable while the outer is still active.
+with distillation_suppressed():
+    with distillation_suppressed():
+        pass
+    check("gate: still suppressed after inner exits", distillation_enabled() is False)
+check("gate: restored after nested contexts", distillation_enabled() is True)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

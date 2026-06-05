@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.llm_engine import _router, query_llm
 from core.router import CANNED_FALLBACK
+from core.distillation_gate import distillation_suppressed
 from core.eval.graders import make_grader
 
 SRC = Path(__file__).resolve().parents[2]
@@ -297,7 +298,12 @@ def run_benchmark(K=3, categories=None, isolate=True, keep_vault=False):
     # or read the real vault. A no-op nullcontext when isolation is disabled.
     vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
 
-    with vault_cm:
+    # Suppress distillation for the whole run (benchmark hygiene): the learning
+    # loop is the only writer to the knowledge vault on a benchmark path, so
+    # turning it off keeps the isolated vault empty -> no trial can pollute it or
+    # retrieve another trial's distilled artifacts. Applies even when
+    # isolate=False, so a benchmark run can never distil into the real vault.
+    with vault_cm, distillation_suppressed():
         return _run_cases(cases, K)
 
 

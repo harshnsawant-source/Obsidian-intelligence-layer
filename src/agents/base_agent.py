@@ -6,6 +6,7 @@ from capability.core.skill_loader import load_skill
 from core.llm_engine import query_llm
 from core.router import CANNED_FALLBACK
 from core.output_health import is_failed_output
+from core.distillation_gate import distillation_enabled
 from core.memory_writer import save_memory
 from core.context_builder import build_context
 from core.verification import refine
@@ -242,8 +243,13 @@ Fix these specific problems and return a corrected response:
         # from compounding through retrieval. See VERIFICATION.md section 5.2.
         verified = self.last_verdict is None or self.last_verdict.ok
 
+        # distillation_enabled() is False only inside a benchmark run (see
+        # core/distillation_gate). Suppressing it there keeps the isolated vault
+        # empty so trials cannot pollute it or retrieve one another's artifacts.
+        # Production is unaffected (the gate defaults to enabled).
         if (
-            self.distillable
+            distillation_enabled()
+            and self.distillable
             and verified
             and isinstance(result, str)
             and result.strip()
@@ -263,7 +269,7 @@ Fix these specific problems and return a corrected response:
                 }
             )
 
-        elif self.distillable and not verified:
+        elif distillation_enabled() and self.distillable and not verified:
 
             print(
                 f"\n[{self.name}] skipped distillation - output failed "

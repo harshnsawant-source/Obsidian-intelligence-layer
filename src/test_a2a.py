@@ -145,5 +145,26 @@ check("CU6: delegate still returns healthy output normally",
       probe.delegate("content-agent", "write something").strip() != "")
 
 
+# Benchmark hygiene: distillation_suppressed() stops run() from distilling,
+# without changing production behaviour outside the context.
+from core.distillation_gate import distillation_suppressed
+
+distill_calls.clear()
+mgr.execute_task("content-agent", "write a launch post")
+check("hygiene: distillation fires in production mode (gate enabled)",
+      len(distill_calls) >= 1)
+
+distill_calls.clear()
+with distillation_suppressed():
+    mgr.execute_task("content-agent", "write another launch post")
+check("hygiene: distillation suppressed inside context (no vault writes)",
+      distill_calls == [])
+
+distill_calls.clear()
+mgr.execute_task("content-agent", "write a third launch post")
+check("hygiene: distillation restored after context exits",
+      len(distill_calls) >= 1)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
