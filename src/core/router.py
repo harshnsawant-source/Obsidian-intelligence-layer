@@ -2,6 +2,7 @@ import time
 from core.providers.registry import build_registry
 from core.complexity import score_complexity, classify, LOW, HIGH
 from core.escalation import record_escalation
+from core.trace import TraceLog
 from core.log import get_logger
 
 
@@ -54,6 +55,7 @@ class ProviderRouter:
     def __init__(self, providers=None):
         self.providers = providers if providers is not None else build_registry()
         self.telemetry = TelemetryAccumulator()
+        self.trace = TraceLog()
 
     def _ordered(self, bar, sensitive):
         local = sorted([m for m in self.providers if m.local], key=lambda m: m.tier)
@@ -92,10 +94,16 @@ class ProviderRouter:
             local = [m for m in order if m.local]
             order = cloud + local
 
+        # Providers actually attempted (breaker-allowed), in order — recorded in
+        # the trace so a failover is visible after the fact.
+        tried = []
+
         for managed in order:
 
             if not managed.breaker.allow():
                 continue
+
+            tried.append(managed.name)
 
             try:
                 t0 = time.time()
@@ -105,16 +113,51 @@ class ProviderRouter:
                 t1 = time.time()
                 managed.breaker.record_success()
                 log.debug("served by %s (bar=%s)", managed.name, bar)
-                
+
                 # Record telemetry
                 self.telemetry.record_call(prompt, output, t1 - t0)
-                
+
+                self.trace.record(
+                    event="generate",
+                    served_by=managed.name,
+                    providers_tried=list(tried),
+                    fallback_used=len(tried) > 1,
+                    bar=bar,
+                    score=round(score, 3),
+                    prefer_cloud=bool(prefer_cloud),
+                    sensitive=bool(sensitive),
+                    latency=round(t1 - t0, 3),
+                    ok=True,
+                    output_kind="ok",
+                )
+
                 return output
 
             except Exception as error:
                 managed.breaker.record_failure()
                 log.warning("provider %s failed: %s", managed.name, error)
+                self.trace.record(
+                    event="provider_failure",
+                    provider=managed.name,
+                    bar=bar,
+                    prefer_cloud=bool(prefer_cloud),
+                    sensitive=bool(sensitive),
+                    error=str(error)[:200],
+                )
                 continue
+
+        self.trace.record(
+            event="generate",
+            served_by=None,
+            providers_tried=list(tried),
+            fallback_used=False,
+            bar=bar,
+            score=round(score, 3),
+            prefer_cloud=bool(prefer_cloud),
+            sensitive=bool(sensitive),
+            ok=False,
+            output_kind="canned",
+        )
 
         log.error("all providers unavailable")
         return CANNED_FALLBACK

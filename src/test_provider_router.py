@@ -101,5 +101,44 @@ before = cf3.provider.calls
 r.generate(COMPLEX)
 check("breaker: open provider skipped on next call", cf3.provider.calls == before)
 
+# --- CU8: per-call tracing (additive; must not change returned values) ------
+
+# success path: one record, served_by set, no fallback
+ct, lt = mk("cloud", 1, False), mk("local", 4, True)
+rt = ProviderRouter([ct, lt])
+out = rt.generate(COMPLEX)
+rec = rt.trace.recent(1)[0]
+check("trace: success records served_by", rec["served_by"] == "cloud")
+check("trace: success ok flag", rec["ok"] is True and rec["output_kind"] == "ok")
+check("trace: no fallback when first provider serves", rec["fallback_used"] is False)
+check("trace: return value unchanged by tracing", out == "OUT[cloud]")
+
+# failover path: cloud fails -> local serves, fallback_used True, both tried
+cft, lft = mk("cloud", 1, False, mode="fail"), mk("local", 4, True)
+rt2 = ProviderRouter([cft, lft])
+rt2.generate(COMPLEX)
+rec2 = rt2.trace.recent(1)[0]
+check("trace: fallback served_by is local", rec2["served_by"] == "local")
+check("trace: fallback_used flagged", rec2["fallback_used"] is True)
+check("trace: providers_tried lists both", rec2["providers_tried"] == ["cloud", "local"])
+
+# all-down path: failure record then a canned generate record
+allf = ProviderRouter([mk("cloud", 1, False, "fail"), mk("local", 4, True, "fail")])
+allf.generate(COMPLEX)
+recs = allf.trace.recent(10)
+check("trace: provider_failure events recorded",
+      sum(1 for r in recs if r.get("event") == "provider_failure") == 2)
+final = [r for r in recs if r.get("event") == "generate"][-1]
+check("trace: all-down records canned outcome",
+      final["ok"] is False and final["output_kind"] == "canned" and final["served_by"] is None)
+
+# ring is bounded
+small = ProviderRouter([mk("cloud", 1, False)])
+small.trace.records = type(small.trace.records)(maxlen=3)
+for _ in range(5):
+    small.generate(COMPLEX)
+check("trace: ring bounded to capacity", len(small.trace.records) == 3)
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
