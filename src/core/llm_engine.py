@@ -7,12 +7,14 @@ _router = ProviderRouter()
 
 
 def query_llm(prompt, fmt=None, max_tokens=8000, sensitive=False,
-              prefer_cloud=False):
+              prefer_cloud=False, expects_code=False):
 
     # fmt="json" forces structured output; sensitive=True keeps the request on
     # local models only (privacy); prefer_cloud=True routes a low-complexity
     # call cloud-first for quality (local stays as the failover floor, and
-    # sensitive still wins). Always returns a string (never raises).
+    # sensitive still wins); expects_code=True marks a code-generation call so
+    # the router cloud-pins it (non-sensitive) — local is unreliable for code.
+    # Always returns a string (never raises).
 
     return _router.generate(
         prompt,
@@ -20,4 +22,5 @@ def query_llm(prompt, fmt=None, max_tokens=8000, sensitive=False,
         max_tokens=max_tokens,
         sensitive=sensitive,
         prefer_cloud=prefer_cloud,
+        expects_code=expects_code,
     )

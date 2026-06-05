@@ -23,6 +23,12 @@ class BaseAgent:
     # only (privacy) — used by agents that reason over personal memory/notes.
     sensitive = False
 
+    # Subclasses set produces_code = True if their primary output is code. Such
+    # calls are cloud-pinned by the router (when not sensitive): the local floor
+    # is unreliable for code generation (repetition loops). Default False = no
+    # change to routing.
+    produces_code = False
+
     # Subclasses set verifiers = [Verifier(), ...] to opt INTO the
     # generate -> verify -> correct loop. Empty (the default) means a single
     # LLM call and no behavior change — verification is strictly additive.
@@ -152,7 +158,11 @@ Your previous attempt did not pass verification:
 Fix these specific problems and return a corrected response:
 {feedback}
 """
-            return query_llm(prompt, sensitive=self.sensitive)
+            return query_llm(
+                prompt,
+                sensitive=self.sensitive,
+                expects_code=self.produces_code,
+            )
 
         outcome = refine(
             generate,

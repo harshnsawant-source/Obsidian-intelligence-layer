@@ -92,11 +92,12 @@ class ProviderRouter:
 
         order = self._ordered(bar, sensitive)
 
-        # prefer_cloud lets a caller opt a low-complexity task into cloud-first
-        # for quality (e.g. distillation summaries), while keeping local as the
-        # failover floor. Privacy still wins: a sensitive run is local-only and
-        # is never reordered onto the cloud.
-        if prefer_cloud and not sensitive:
+        # Cloud-pin: prefer_cloud opts a low-complexity call cloud-first for
+        # quality (e.g. distillation); expects_code marks code generation, which
+        # the local floor is unreliable at (repetition loops). Both reorder
+        # cloud ahead of local while KEEPING local as the failover floor.
+        # Privacy still wins: a sensitive run is local-only and never reordered.
+        if (prefer_cloud or expects_code) and not sensitive:
             cloud = [m for m in order if not m.local]
             local = [m for m in order if m.local]
             order = cloud + local
@@ -132,6 +133,7 @@ class ProviderRouter:
                     bar=bar,
                     score=round(score, 3),
                     prefer_cloud=bool(prefer_cloud),
+                    expects_code=bool(expects_code),
                     sensitive=bool(sensitive),
                     latency=round(t1 - t0, 3),
                     ok=True,
@@ -163,6 +165,7 @@ class ProviderRouter:
             bar=bar,
             score=round(score, 3),
             prefer_cloud=bool(prefer_cloud),
+            expects_code=bool(expects_code),
             sensitive=bool(sensitive),
             ok=False,
             output_kind="canned",

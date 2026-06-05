@@ -142,6 +142,31 @@ fail_rec = [r for r in rto.trace.recent(10) if r.get("event") == "provider_failu
 check("CU3: timeout flagged severe in trace", fail_rec.get("severe") is True)
 
 
+# --- CU4: expects_code cloud-pins non-sensitive code tasks -------------------
+# A low-complexity code task would normally go local-first; expects_code pins cloud.
+cc, lc = mk("cloud", 1, False), mk("local", 4, True)
+check("CU4: code task routes cloud-first",
+      ProviderRouter([cc, lc]).generate(TRIVIAL, expects_code=True) == "OUT[cloud]")
+
+# Local stays the failover floor when cloud is down.
+ccf, lcf = mk("cloud", 1, False, mode="fail"), mk("local", 4, True)
+check("CU4: code task still falls over to local floor",
+      ProviderRouter([ccf, lcf]).generate(TRIVIAL, expects_code=True) == "OUT[local]")
+
+# Privacy outranks the code pin: sensitive code stays local, cloud untouched.
+ccs, lcs = mk("cloud", 1, False), mk("local", 4, True)
+out = ProviderRouter([ccs, lcs]).generate(TRIVIAL, expects_code=True, sensitive=True)
+check("CU4: sensitive code still pins local (privacy wins)",
+      out == "OUT[local]" and ccs.provider.calls == 0)
+
+# expects_code is recorded in the trace for observability.
+cct, lct = mk("cloud", 1, False), mk("local", 4, True)
+rct = ProviderRouter([cct, lct])
+rct.generate(TRIVIAL, expects_code=True)
+check("CU4: expects_code recorded in trace",
+      rct.trace.recent(1)[0].get("expects_code") is True)
+
+
 # --- CU8: per-call tracing (additive; must not change returned values) ------
 
 # success path: one record, served_by set, no fallback

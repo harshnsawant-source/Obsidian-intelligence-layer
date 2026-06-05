@@ -8,6 +8,10 @@ class DevelopmentAgent(
     # Phase 5: development produces artifacts (and may flag risks/assumptions).
     contributes = ["artifacts", "risks", "assumptions"]
 
+    # CU4: development's primary output is code -> cloud-pin (local is unreliable
+    # for code generation). Privacy still wins if this agent were ever sensitive.
+    produces_code = True
+
     def __init__(self):
 
         super().__init__(
