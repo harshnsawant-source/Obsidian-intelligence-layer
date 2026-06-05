@@ -186,5 +186,53 @@ check("run_trial: canned fallback flagged as infra error",
       trial_canned["infra_error"] is True)
 
 
+# ---- isolated benchmark vault: writes/reads redirect then restore ---------
+import capability.core.runtime_context as runtime_context
+import core.context_builder as context_builder
+import core.memory_writer as memory_writer
+from core.eval.benchmark_vault import isolated_vault
+
+_orig = (
+    runtime_context.PROJECT_ROOT,
+    memory_writer.MEMORIES_DIR,
+    context_builder._index,
+)
+
+iso_root = Path(tempfile.mkdtemp(prefix="oil_isovault_"))
+try:
+    with isolated_vault(root=iso_root, keep=True) as root:
+        check("isolated_vault: yields the root", Path(root) == iso_root)
+        check("isolated_vault: RuntimeContext root redirected",
+              runtime_context.PROJECT_ROOT == iso_root)
+        check("isolated_vault: save_memory dir under root",
+              str(memory_writer.MEMORIES_DIR).startswith(str(iso_root)))
+        check("isolated_vault: retrieval index vault under root",
+              str(context_builder._index.vault).startswith(str(iso_root)))
+
+        # A distillation write lands inside the isolated vault, not the real one.
+        saved_path = runtime_context.RuntimeContext().knowledge.write(
+            "iso_probe.md", "probe"
+        )
+        check("isolated_vault: knowledge write lands in isolated vault",
+              str(saved_path).startswith(str(iso_root)))
+
+        # save_memory also lands inside the isolated memories dir.
+        mem_path = memory_writer.save_memory("iso_probe", "probe")
+        check("isolated_vault: save_memory lands in isolated dir",
+              str(mem_path).startswith(str(iso_root)))
+
+    # After the context exits, every patched global is restored.
+    check("isolated_vault: RuntimeContext root restored",
+          runtime_context.PROJECT_ROOT == _orig[0])
+    check("isolated_vault: MEMORIES_DIR restored",
+          memory_writer.MEMORIES_DIR == _orig[1])
+    check("isolated_vault: retrieval index restored",
+          context_builder._index is _orig[2])
+finally:
+    shutil.rmtree(iso_root, ignore_errors=True)
+    # Defensive: ensure globals are restored even if an assertion above raised.
+    runtime_context.PROJECT_ROOT, memory_writer.MEMORIES_DIR, context_builder._index = _orig
+
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

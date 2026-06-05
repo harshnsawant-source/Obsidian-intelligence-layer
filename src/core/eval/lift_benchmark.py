@@ -1,6 +1,7 @@
 import json
 import time
 import math
+import contextlib
 from pathlib import Path
 
 from core.llm_engine import _router, query_llm
@@ -267,14 +268,35 @@ def save_reports(report):
     print(f"\nReports written to:\n- {LIFT_REPORT_JSON}\n- {LIFT_REPORT_MD}")
 
 
-def run_benchmark(K=3):
+def run_benchmark(K=3, categories=None, isolate=True, keep_vault=False):
     # Imported here (not at module top) so the offline unit tests can import this
     # module without pulling the full agent stack.
     from agents.planner_agent import PlannerAgent
+    from core.eval.benchmark_vault import isolated_vault
 
     cases = load_benchmark_cases()
-    print(f"Loaded {len(cases)} benchmark cases. Running {K} trials each...")
 
+    # Optional category filter (e.g. ["Engineering"]) — lets us run only the
+    # categories with a trustworthy `objective` grader signal.
+    if categories:
+        wanted = {c.lower() for c in categories}
+        cases = [c for c in cases if c.category.lower() in wanted]
+
+    print(f"Loaded {len(cases)} benchmark cases. Running {K} trials each...")
+    if isolate:
+        print("Vault isolation: ON (writes + reads redirected to a throwaway "
+              "benchmark vault; the real vault is untouched).")
+
+    # isolated_vault redirects all distillation/memory writes AND retrieval reads
+    # to a throwaway directory so the pipeline (PlannerAgent.run) cannot pollute
+    # or read the real vault. A no-op nullcontext when isolation is disabled.
+    vault_cm = isolated_vault(keep=keep_vault) if isolate else contextlib.nullcontext()
+
+    with vault_cm:
+        return _run_cases(cases, K, PlannerAgent)
+
+
+def _run_cases(cases, K, PlannerAgent):
     results = {}
 
     for case in cases:
@@ -314,11 +336,21 @@ Response:"""
 
 
 if __name__ == "__main__":
+    # Usage: python -m core.eval.lift_benchmark [K] [Category[,Category...]] [--keep-vault]
+    #   K           number of trials per case (default 3)
+    #   Category    comma-separated category filter, e.g. Engineering
+    #   --keep-vault leave the isolated benchmark vault on disk for inspection
     import sys
+
+    args = [a for a in sys.argv[1:] if a != "--keep-vault"]
+    keep = "--keep-vault" in sys.argv
+
     K_val = 3
-    if len(sys.argv) > 1:
-        try:
-            K_val = int(sys.argv[1])
-        except ValueError:
-            pass
-    run_benchmark(K=K_val)
+    cats = None
+    for a in args:
+        if a.isdigit():
+            K_val = int(a)
+        else:
+            cats = [c.strip() for c in a.split(",") if c.strip()]
+
+    run_benchmark(K=K_val, categories=cats, keep_vault=keep)
