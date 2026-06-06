@@ -15,3 +15,13 @@ runtime/eval_runs.jsonl
 
 # ToolAgent work directory (path-jailed scratch space for file tools)
 src/state/toolspace/
+
+# Generated benchmark / runtime artifacts (regenerated on demand)
+runtime/lift_report*.md
+runtime/lift_report*.json
+runtime/lift_v2_report*.md
+runtime/lift_v2_report*.json
+runtime/trace.jsonl
+runtime/consent_log.jsonl
+runtime/calibration_v2.json
+runtime/benchmark_vault/
