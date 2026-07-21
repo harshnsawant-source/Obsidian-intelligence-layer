@@ -13,6 +13,14 @@ answer over private notes and documents locally.
 > So I followed the evidence and pivoted to the part that did. That story is
 > below, and it's the most important thing in this repo.
 
+> **About this repository.** The code here is a **public snapshot pinned at June
+> 2026**, at the point the local-first knowledge layer first worked end to end.
+> Development continued after that against my own private notes, and the working
+> tree stayed private because it runs on my real vault. The section
+> [*After this snapshot*](#after-this-snapshot-what-the-system-became) reports
+> **measured outcomes** from that later work — results and design decisions, not
+> code in this repo. Everything above it describes code you can read here.
+
 ---
 
 ## Engineering highlights
@@ -38,7 +46,7 @@ answer over private notes and documents locally.
   signals, and deterministic bounded rendering.
 - **Output-health + degeneracy detection** (`core/output_health.py`) — catches
   repetition loops / no-answer output and treats it as a provider failure.
-- **~14 test suites, ~480 offline-deterministic checks** (`run_tests.py`) — every
+- **14 test suites, ~480 offline-deterministic checks** (`run_tests.py`) — every
   subsystem stubbed and tested without network or paid APIs.
 
 ## The experiment that defined the project: orchestration lift
@@ -87,6 +95,62 @@ process — including the reviews that argued *against* shipping things.
 
 ---
 
+## After this snapshot: what the system became
+
+Work continued privately on my own vault. Reported here as **measured results**;
+the code lives in a private tree.
+
+**Retrieval quality is now a measured number, not a guess.** I built a
+leakage-free retrieval benchmark over the real vault: each note is split into a
+query half and a *disjoint* document half, and the system has to retrieve a
+note's own doc-half out of a field of distractors — so a hit can't come from
+overlapping text. Used it to run a head-to-head on embedding models at
+**production note lengths** (not toy inputs):
+
+| embedding model | top-1 | MRR |
+|---|---|---|
+| `nomic-embed-text` (previous) | 51.7% | 0.665 |
+| `granite-embedding:278m` (current) | **73.3%** | **0.809** |
+
+That's roughly **+22 points of top-1 accuracy** on the task the whole knowledge
+layer rests on. Worth recording how nearly I got this wrong: my *first*
+comparison used short inputs that fit both models comfortably, and granite looked
+good. But 59% of my real notes are longer than granite's 512-token context, and
+the index embeds whole notes — so the first result didn't describe production at
+all. I threw it out and re-ran under the real regime before adopting anything.
+
+**Swapping the embedder exposed a latent corruption bug.** The index reused
+cached vectors keyed by content hash, with no notion of *which model* produced
+them. Any embedder change would therefore have silently mixed two embedding
+spaces in one index — cosine similarity between vectors from different models is
+meaningless, and nothing would have crashed to tell me. The index now records its
+model and forces a clean re-embed when it changes.
+
+**Continuous research intake, with a hard human gate.** A daily digest pulls from
+several sources, ranks them against what the system is actually built from, and
+proposes improvements to itself in a *"what could make me better"* section.
+Nothing self-applies — every proposal is a suggestion I accept or reject, and
+each decision is logged and feeds back into the ranking. That gate is deliberate:
+self-modifying agent architectures are the interesting failure mode, and this
+system is explicitly not one.
+
+**Every answer is auditable.** A single egress chokepoint keeps an always-on,
+content-free log of any generation that leaves the device; per-answer receipts
+record inputs, output and verdict by hash as a tamper-evident chain; and a
+disposition ledger records whether I kept, edited or discarded each draft — which
+turns "is this useful?" into an acceptance metric instead of an opinion.
+
+**The automated code reviewer is itself held to account.** Findings from the
+review pass are individually rated and recorded rather than applied on trust. In
+practice most flagged "issues" turn out to be deliberate conventions the reviewer
+misread — keeping that ledger is what stops a review loop from slowly rewriting a
+codebase to satisfy a critic instead of a user.
+
+**The test battery grew with it:** **45 suites / 1,388 offline-deterministic
+checks**, still no network and no paid APIs.
+
+---
+
 ## Run
 
 ```bash
@@ -102,7 +166,7 @@ Obsidian vault (local-first, consent-gated cloud), **#20** curate the vault,
 ## Tests
 
 ```bash
-python run_tests.py     # ~14 suites, offline + deterministic
+python run_tests.py     # 14 suites here, offline + deterministic
 ```
 
 ## Layout
@@ -118,7 +182,8 @@ coordination/      design reviews + decision records (the process trail)
 
 ## Honest status
 
-A working prototype with strong safety and evaluation instincts on
-prototype-grade infrastructure. The orchestration thesis is settled (negative);
-the durable value is the local-first, privacy-preserving knowledge layer. See
+At this snapshot: a working prototype with strong safety and evaluation instincts
+on prototype-grade infrastructure. The orchestration thesis is settled
+(negative); the durable value is the local-first, privacy-preserving knowledge
+layer, which is where all later work went. See
 `coordination/PRODUCT_AUDIT_AND_ROADMAP.md` for the candid assessment.
